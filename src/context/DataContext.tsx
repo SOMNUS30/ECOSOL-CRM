@@ -16,14 +16,21 @@ interface DataContextType {
   clientes: Cliente[];
   lotes: Lote[];
   contratos: Contrato[];
+  loadingContratos: boolean;
+  contratosError: string | null;
+  refreshContratos: () => Promise<void>;
+  setContratos: React.Dispatch<React.SetStateAction<Contrato[]>>;
   pagos: Pago[];
   egresos: Egreso[];
+  loadingEgresos: boolean;
+  egresosError: string | null;
+  refreshEgresos: () => Promise<void>;
   usuarios: UsuarioSistema[];
   connectionStatus: ConnectionStatus;
   loading: boolean;
   metrics: KPIMetrics;
   registrarAbono: (pagoData: Omit<Pago, 'id'> & { codigo_contrato?: string; propietario?: string }) => Promise<boolean>;
-  registrarEgreso: (egresoData: Omit<Egreso, 'id'>) => Promise<boolean>;
+  registrarEgreso: (egresoData: Omit<Egreso, 'id'>) => Promise<{ success: boolean; error?: string }>;
   registrarCliente: (clienteData: Omit<Cliente, 'id'>) => Promise<Cliente | null>;
   registrarVenta: (params: RegistrarVentaParams) => Promise<boolean>;
   getNextContractCode: () => string;
@@ -49,8 +56,12 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [lotes, setLotes] = useState<Lote[]>([]);
   const [contratos, setContratos] = useState<Contrato[]>([]);
+  const [loadingContratos, setLoadingContratos] = useState<boolean>(true);
+  const [contratosError, setContratosError] = useState<string | null>(null);
   const [pagos, setPagos] = useState<Pago[]>([]);
   const [egresos, setEgresos] = useState<Egreso[]>([]);
+  const [loadingEgresos, setLoadingEgresos] = useState<boolean>(true);
+  const [egresosError, setEgresosError] = useState<string | null>(null);
   const [usuarios, setUsuarios] = useState<UsuarioSistema[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>({
@@ -68,6 +79,34 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [isNuevoClienteModalOpen, setIsNuevoClienteModalOpen] = useState<boolean>(false);
   const [isNuevaVentaModalOpen, setIsNuevaVentaModalOpen] = useState<boolean>(false);
 
+  const fetchContratos = useCallback(async () => {
+    setLoadingContratos(true);
+    setContratosError(null);
+    const res = await supabaseService.getContratos();
+    if (res.error) {
+      setContratosError(res.error);
+      setContratos([]);
+    } else {
+      setContratos(res.data);
+      setContratosError(null);
+    }
+    setLoadingContratos(false);
+  }, []);
+
+  const fetchEgresos = useCallback(async () => {
+    setLoadingEgresos(true);
+    setEgresosError(null);
+    const res = await supabaseService.getEgresos();
+    if (res.error) {
+      setEgresosError(res.error);
+      setEgresos([]);
+    } else {
+      setEgresos(res.data);
+      setEgresosError(null);
+    }
+    setLoadingEgresos(false);
+  }, []);
+
   const loadData = useCallback(async () => {
     setLoading(true);
 
@@ -79,17 +118,21 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const cobranzasList = await supabaseService.getCobranzas();
     setCobranzas(cobranzasList);
 
-    // 3. Load relational data (clientes, lotes, contratos, pagos, egresos, usuarios)
+    // 3. Load relational base data (clientes, lotes, pagos, usuarios)
     const relational = supabaseService.getInitialRelationalData();
     setClientes(relational.clientes);
     setLotes(relational.lotes);
-    setContratos(relational.contratos);
     setPagos(relational.pagos);
-    setEgresos(relational.egresos);
     setUsuarios(relational.usuarios);
 
+    // 4. Load real egresos and real contratos directly from Supabase
+    await Promise.all([
+      fetchEgresos(),
+      fetchContratos()
+    ]);
+
     setLoading(false);
-  }, []);
+  }, [fetchEgresos, fetchContratos]);
 
   useEffect(() => {
     loadData();
@@ -186,7 +229,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         // Update corresponding contract in memory (cuotas_pagadas_base = cuotas_pagadas_base + 1)
         setContratos(prev => prev.map(ctr => {
           if (ctr.codigo_contrato === pagoData.codigo_contrato) {
-            const nuevasPagadas = ctr.cuotas_pagadas_base + 1;
+            const nuevasPagadas = Number(ctr.cuotas_pagadas_base || 0) + 1;
             return {
               ...ctr,
               cuotas_pagadas_base: nuevasPagadas,
@@ -203,13 +246,16 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return false;
   };
 
-  const registrarEgreso = async (egresoData: Omit<Egreso, 'id'>): Promise<boolean> => {
+  const registrarEgreso = async (egresoData: Omit<Egreso, 'id'>): Promise<{ success: boolean; error?: string }> => {
     const res = await supabaseService.registrarEgreso(egresoData);
-    if (res.success) {
-      setEgresos(prev => [res.egreso, ...prev]);
-      return true;
+    if (res.success && res.egreso) {
+      setEgresos(prev => [res.egreso!, ...prev]);
+      setEgresosError(null);
+      // Re-fetch to ensure complete sync with database
+      fetchEgresos();
+      return { success: true };
     }
-    return false;
+    return { success: false, error: res.error || 'No se pudo guardar el gasto en Supabase.' };
   };
 
   const guardarUsuario = (user: UsuarioSistema) => {
@@ -259,8 +305,15 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         clientes,
         lotes,
         contratos,
+        loadingContratos,
+        contratosError,
+        refreshContratos: fetchContratos,
+        setContratos,
         pagos,
         egresos,
+        loadingEgresos,
+        egresosError,
+        refreshEgresos: fetchEgresos,
         usuarios,
         connectionStatus,
         loading,

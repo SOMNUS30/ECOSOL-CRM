@@ -255,20 +255,8 @@ export function generateRelationalSeed() {
     }
   });
 
-  // Operating Expenses (Egresos) for Caja Chica
-  const egresos: Egreso[] = [
-    { id: 1, fecha: '2026-10-15', tipo: 'FIJO', categoria: 'Sueldos y Comisiones', descripcion: 'Pago planilla primera quincena asesores de venta', monto: 8500.00, comprobante: 'PL-2026-10A' },
-    { id: 2, fecha: '2026-10-14', tipo: 'VARIABLE', categoria: 'Publicidad y Marketing', descripcion: 'Campaña publicitaria Meta Ads & TikTok Lotes Ica', monto: 1850.00, comprobante: 'INV-FB-91823' },
-    { id: 3, fecha: '2026-10-12', tipo: 'FIJO', categoria: 'Servicios Básicos', descripcion: 'Luz del Sur y Agua caseta de ventas proyecto', monto: 420.50, comprobante: 'REC-LUZ-8273' },
-    { id: 4, fecha: '2026-10-11', tipo: 'FIJO', categoria: 'Alquiler y Caseta', descripcion: 'Alquiler mensual caseta de atención y showroom Ica', monto: 2500.00, comprobante: 'REC-ALQ-1049' },
-    { id: 5, fecha: '2026-10-10', tipo: 'VARIABLE', categoria: 'Movilidad y Viáticos', descripcion: 'Combustible y peajes transporte clientes visita guiada', monto: 680.00, comprobante: 'FAC-PET-0918' },
-    { id: 6, fecha: '2026-10-08', tipo: 'VARIABLE', categoria: 'Notaría y Trámites Legales', descripcion: 'Gastos notariales escrituración y minutas lotes', monto: 1450.00, comprobante: 'NOT-ICA-4491' },
-    { id: 7, fecha: '2026-10-05', tipo: 'FIJO', categoria: 'Mantenimiento y Oficina', descripcion: 'Materiales de oficina, tóner y hojas membretadas', monto: 320.00, comprobante: 'BOL-OF-0192' },
-    { id: 8, fecha: '2026-09-30', tipo: 'FIJO', categoria: 'Sueldos y Comisiones', descripcion: 'Comisiones comerciales cierre de ventas mes de septiembre', monto: 6200.00, comprobante: 'REC-HON-0933' },
-    { id: 9, fecha: '2026-09-28', tipo: 'VARIABLE', categoria: 'Publicidad y Marketing', descripcion: 'Impresión de gigantografías y volantes publicitarios', monto: 750.00, comprobante: 'FAC-IMP-1029' },
-    { id: 10, fecha: '2026-09-22', tipo: 'VARIABLE', categoria: 'Mantenimiento y Oficina', descripcion: 'Mantenimiento y desbroce de vías en terreno loteo', monto: 2100.00, comprobante: 'REC-SRV-8821' },
-    { id: 11, fecha: '2026-09-15', tipo: 'FIJO', categoria: 'Sueldos y Comisiones', descripcion: 'Pago planilla quincenal staff administrativo y seguridad', monto: 4500.00, comprobante: 'PL-2026-09B' }
-  ];
+  // Egresos reales se consultan directamente desde la tabla 'egresos' de Supabase
+  const egresos: Egreso[] = [];
 
   return { clientes, lotes, contratos, pagos, egresos, usuarios: initialUsuarios };
 }

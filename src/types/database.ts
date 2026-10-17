@@ -5,13 +5,16 @@ export type TipoPago = 'CUOTA' | 'INICIAL' | 'AL CONTADO' | 'SEPARACION' | 'AMOR
 export type MetodoPago = 'BCP' | 'YAPE' | 'INTERBANK' | 'BANBIF' | 'EFECTIVO';
 export type TipoEgreso = 'FIJO' | 'VARIABLE';
 export type CategoriaEgreso = 
-  | 'Sueldos y Comisiones'
-  | 'Servicios Básicos'
-  | 'Alquiler y Caseta'
-  | 'Publicidad y Marketing'
-  | 'Movilidad y Viáticos'
-  | 'Mantenimiento y Oficina'
-  | 'Notaría y Trámites Legales';
+  | 'INFRAESTRUCTURA Y SERVICIO'
+  | 'SUELDOS'
+  | 'OBLIGACIONES Y FINANZAS'
+  | 'PUBLICIDAD Y MARKETING'
+  | 'COMISIONES DE VENTAS'
+  | 'TRANSPORTE Y MOVILIDAD'
+  | 'MANTENIMIENTO Y OBRAS'
+  | 'REFRIGERIOS Y EVENTOS'
+  | 'GASTOS ADMINISTRATIVOS MENORES'
+  | string;
 
 export type EstadoCobranza = 'AL DIA' | 'VENCE HOY' | 'POR VENCER' | 'EN MORA' | 'LIQUIDADO';
 
@@ -53,22 +56,24 @@ export interface Lote {
 export interface Contrato {
   id: number | string;
   codigo_contrato: string;
-  cliente_id: number | string;
-  lote_id: number | string;
-  asesor: string;
-  mes_contrato: string;
+  cliente_id?: number | string;
+  lote_id?: number | string;
+  asesor?: string;
+  mes_contrato?: string;
   forma_compra: FormaCompra;
   precio_venta: number;
   monto_inicial: number;
   saldo_financiar: number;
   cantidad_cuotas: number;
   monto_cuota: number;
-  cuotas_pagadas_base: number;
-  fecha_primer_pago: string;
-  fecha_ultimo_pago: string;
+  cuotas_pagadas_base?: number;
+  fecha_primer_pago?: string;
+  fecha_ultimo_pago?: string;
   estado: EstadoContrato;
   cliente?: Cliente;
+  clientes?: { dni?: string; nombres_apellidos?: string; telefono?: string; [key: string]: any };
   lote?: Lote;
+  lotes?: { etapa?: number; manzana?: string; numero_lote?: string; area_m2?: number; [key: string]: any };
 }
 
 export interface Pago {
@@ -123,4 +128,25 @@ export interface UsuarioAuth {
   nombres: string;
   rol: RolUsuario;
   avatar?: string;
+}
+
+export interface EmpresaConfig {
+  nombreEmpresa: string;
+  razonSocial: string;
+  ruc: string;
+  direccion: string;
+  departamento: string;
+  provincia: string;
+  distrito: string;
+  telefono: string;
+  email: string;
+  logoUrl: string;
+  representanteLegal: string;
+  dniRepresentante: string;
+  bancoPrincipal: string;
+  numeroCuenta: string;
+  cci: string;
+  moneda: string;
+  mensajeWhatsApp: string;
+  piePaginaVoucher: string;
 }

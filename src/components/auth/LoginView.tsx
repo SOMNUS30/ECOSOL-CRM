@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
+import { useCompany } from '../../context/CompanyContext';
 import { 
   Building2, 
   Lock, 
@@ -11,6 +12,7 @@ import {
 
 export const LoginView: React.FC = () => {
   const { loginWithEmail, loginAsDemo, error, clearError } = useAuth();
+  const { empresaConfig } = useCompany();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -28,12 +30,25 @@ export const LoginView: React.FC = () => {
       <div className="w-full max-w-md bg-white/95 backdrop-blur-md border border-slate-200/90 rounded-2xl shadow-2xl p-6 sm:p-8">
         {/* Brand header */}
         <div className="text-center mb-6">
-          <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-emerald-600 text-white mb-3 shadow-xs">
-            <Building2 className="w-6 h-6" />
+          <div className="inline-flex items-center justify-center mb-3">
+            {empresaConfig.logoUrl ? (
+              <img
+                src={empresaConfig.logoUrl}
+                alt={empresaConfig.nombreEmpresa}
+                className="h-16 w-auto max-w-[120px] object-contain drop-shadow-xs"
+                onError={(e) => {
+                  (e.target as HTMLElement).style.display = 'none';
+                }}
+              />
+            ) : (
+              <div className="w-14 h-14 rounded-2xl bg-emerald-600 p-2 text-white shadow-md flex items-center justify-center">
+                <Building2 className="w-7 h-7 text-white" />
+              </div>
+            )}
           </div>
 
           <h1 className="text-xl font-bold text-slate-900 tracking-tight">
-            ECOSOL INMOBILIARIA
+            {empresaConfig.nombreEmpresa}
           </h1>
           <p className="text-xs text-slate-500 mt-0.5">
             ERP &amp; Gestión de Cobranzas

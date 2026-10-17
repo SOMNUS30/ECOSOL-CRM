@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { useData } from '../../context/DataContext';
+import { useCompany } from '../../context/CompanyContext';
 import { ControlCobranza } from '../../types/database';
 import { 
   Search, 
@@ -18,6 +19,7 @@ import {
 
 export const CobranzasModule: React.FC = () => {
   const { cobranzas, setSelectedContractForPayment, loading, setIsNuevoClienteModalOpen } = useData();
+  const { buildWhatsAppMessage } = useCompany();
 
   // Filters & Search
   const [searchTerm, setSearchTerm] = useState('');
@@ -165,7 +167,15 @@ export const CobranzasModule: React.FC = () => {
   const getWhatsAppUrl = (c: ControlCobranza) => {
     const cleanPhone = (c.telefono || '').replace(/[^0-9]/g, '');
     const phone = cleanPhone.length === 9 ? `51${cleanPhone}` : cleanPhone;
-    const msg = `Estimado(a) ${c.propietario}, le saludamos de ECOSOL INMOBILIARIA. Le recordamos que su Cuota #${c.proximo_numero_cuota || (c.cuotas_pagadas + 1)} por un monto de S/ ${c.monto_cuota} (Lote Mz ${c.manzana} Lt ${c.numero_lote}, Contrato ${c.codigo_contrato}) vence el ${formatDueDate(c.proximo_vencimiento)}. Puede abonar vía BCP, Yape o Interbank. Agradecemos su puntualidad.`;
+    const msg = buildWhatsAppMessage({
+      cliente: c.propietario,
+      cuota: c.proximo_numero_cuota || (c.cuotas_pagadas + 1),
+      monto: Number(c.monto_cuota).toLocaleString('es-PE', { minimumFractionDigits: 2 }),
+      manzana: c.manzana,
+      lote: c.numero_lote,
+      contrato: c.codigo_contrato,
+      fecha: formatDueDate(c.proximo_vencimiento)
+    });
     return `https://wa.me/${phone}?text=${encodeURIComponent(msg)}`;
   };
 

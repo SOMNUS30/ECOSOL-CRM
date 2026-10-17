@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { useData } from '../../context/DataContext';
+import { useTheme } from '../../context/ThemeContext';
 import { MetodoPago, Pago } from '../../types/database';
 import { VoucherModal } from '../common/VoucherModal';
 import { 
@@ -34,24 +35,61 @@ export const DashboardModule: React.FC = () => {
     metrics, 
     contratos, 
     pagos, 
+    egresos,
     lotes, 
     setIsNuevoClienteModalOpen, 
     setIsNuevaVentaModalOpen 
   } = useData();
 
+  const { activeColorTheme } = useTheme();
   const [activeVoucher, setActiveVoucher] = useState<Pago | null>(null);
 
-  // 1. Data for Monthly Inflow vs Outflow Bar Chart
+  // 1. Data for Monthly Inflow vs Outflow Bar Chart computed dynamically from real records
   const monthlyData = useMemo(() => {
-    return [
-      { mes: 'May', ingresos: 48500, egresos: 19200 },
-      { mes: 'Jun', ingresos: 54200, egresos: 22100 },
-      { mes: 'Jul', ingresos: 68900, egresos: 24500 },
-      { mes: 'Ago', ingresos: 71200, egresos: 21800 },
-      { mes: 'Set', ingresos: 79800, egresos: 23600 },
-      { mes: 'Oct (Act)', ingresos: Math.round(metrics.recaudacionTotal * 0.22), egresos: metrics.totalEgresos }
-    ];
-  }, [metrics]);
+    const monthNames = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Set', 'Oct', 'Nov', 'Dic'];
+
+    // Group real payments by 'YYYY-MM'
+    const incomeByMonth: Record<string, number> = {};
+    pagos.forEach(p => {
+      if (p.fecha_pago) {
+        const ym = p.fecha_pago.slice(0, 7);
+        incomeByMonth[ym] = (incomeByMonth[ym] || 0) + Number(p.monto || 0);
+      }
+    });
+
+    // Group real egresos by 'YYYY-MM'
+    const expenseByMonth: Record<string, number> = {};
+    egresos.forEach(e => {
+      if (e.fecha) {
+        const ym = e.fecha.slice(0, 7);
+        expenseByMonth[ym] = (expenseByMonth[ym] || 0) + Number(e.monto || 0);
+      }
+    });
+
+    // Find all distinct months or generate recent 6 months
+    const allMonths = Array.from(new Set([...Object.keys(incomeByMonth), ...Object.keys(expenseByMonth)])).sort();
+    
+    let targetMonths = allMonths.slice(-6);
+    if (targetMonths.length === 0) {
+      const now = new Date();
+      for (let i = 5; i >= 0; i--) {
+        const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+        const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+        targetMonths.push(ym);
+      }
+    }
+
+    return targetMonths.map(ym => {
+      const [year, month] = ym.split('-');
+      const mIdx = parseInt(month, 10) - 1;
+      const label = `${monthNames[mIdx] || month} ${year.slice(-2)}`;
+      return {
+        mes: label,
+        ingresos: Math.round(incomeByMonth[ym] || 0),
+        egresos: Math.round(expenseByMonth[ym] || 0)
+      };
+    });
+  }, [pagos, egresos]);
 
   // 2. Data for Donut Chart (Contado vs Crédito)
   const donutData = useMemo(() => {
@@ -59,10 +97,10 @@ export const DashboardModule: React.FC = () => {
     const creditoCount = contratos.filter(c => c.forma_compra === 'CREDITO' && c.estado !== 'LIQUIDADO').length;
     
     return [
-      { name: 'Crédito Directo', value: creditoCount || 116, color: '#10b981' },
+      { name: 'Crédito Directo', value: creditoCount || 116, color: activeColorTheme.accent },
       { name: 'Venta al Contado', value: contadoCount || 10, color: '#64748b' }
     ];
-  }, [contratos]);
+  }, [contratos, activeColorTheme]);
 
   // 3. Last 6 payments registered
   const ultimosAbonos = useMemo(() => {
@@ -233,8 +271,9 @@ export const DashboardModule: React.FC = () => {
             <span className="text-2xl font-bold text-emerald-700 tracking-tight">
               S/ {metrics.flujoCajaNeto.toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </span>
-            <p className="mt-1 text-[11px] text-slate-500">
-              Egresos: S/ {metrics.totalEgresos.toLocaleString('es-PE', { minimumFractionDigits: 0 })}
+            <p className="mt-1 text-[11px] text-slate-500 flex items-center justify-between">
+              <span>Egresos reales: S/ {metrics.totalEgresos.toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+              <span className="text-slate-400 font-mono">({egresos.length} regs)</span>
             </p>
           </div>
         </div>
@@ -282,7 +321,7 @@ export const DashboardModule: React.FC = () => {
                   }}
                   formatter={(value: any) => [`S/ ${Number(value).toLocaleString('es-PE')}`, '']}
                 />
-                <Bar dataKey="ingresos" name="Ingresos" fill="#10b981" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="ingresos" name="Ingresos" fill={activeColorTheme.accent} radius={[4, 4, 0, 0]} />
                 <Bar dataKey="egresos" name="Egresos" fill="#f43f5e" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>

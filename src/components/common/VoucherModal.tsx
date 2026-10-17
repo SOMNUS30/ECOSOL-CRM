@@ -1,6 +1,7 @@
 import React from 'react';
 import { Pago } from '../../types/database';
-import { X, Printer, CheckCircle, ShieldCheck } from 'lucide-react';
+import { useCompany } from '../../context/CompanyContext';
+import { X, Printer, CheckCircle, ShieldCheck, Building2 } from 'lucide-react';
 
 interface VoucherModalProps {
   pago: Pago | null;
@@ -8,6 +9,7 @@ interface VoucherModalProps {
 }
 
 export const VoucherModal: React.FC<VoucherModalProps> = ({ pago, onClose }) => {
+  const { empresaConfig } = useCompany();
   if (!pago) return null;
 
   const handlePrint = () => {
@@ -35,12 +37,34 @@ export const VoucherModal: React.FC<VoucherModalProps> = ({ pago, onClose }) => 
         <div className="p-5 space-y-4 text-slate-700">
           {/* Company & Voucher Identification */}
           <div className="flex items-start justify-between border-b border-slate-200 pb-3">
-            <div>
-              <div className="flex items-center gap-1.5">
-                <span className="text-sm font-bold text-slate-900 tracking-tight">ECOSOL INMOBILIARIA</span>
-                <span className="text-[10px] bg-slate-100 text-slate-600 px-1 py-0.2 rounded font-mono font-medium">SAC</span>
+            <div className="flex items-center gap-2.5">
+              <div className="flex items-center justify-center shrink-0">
+                {empresaConfig.logoUrl ? (
+                  <img
+                    src={empresaConfig.logoUrl}
+                    alt="Logo"
+                    className="h-9 w-auto max-w-[42px] object-contain"
+                    onError={(e) => {
+                      (e.target as HTMLElement).style.display = 'none';
+                    }}
+                  />
+                ) : (
+                  <Building2 className="w-6 h-6 text-emerald-600" />
+                )}
               </div>
-              <p className="text-[11px] text-slate-500 mt-0.5">RUC: 20608912341 • Sede Ica</p>
+              <div>
+                <span className="text-xs font-bold text-slate-900 tracking-tight block">
+                  {empresaConfig.razonSocial || empresaConfig.nombreEmpresa}
+                </span>
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  RUC: <span className="font-mono">{empresaConfig.ruc}</span> • {empresaConfig.distrito || 'Sede Ica'}
+                </p>
+                {empresaConfig.direccion && (
+                  <p className="text-[10px] text-slate-400 truncate max-w-[200px]">
+                    {empresaConfig.direccion}
+                  </p>
+                )}
+              </div>
             </div>
             <div className="text-right">
               <span className="inline-block px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 font-mono text-[10px] font-medium">
@@ -92,7 +116,7 @@ export const VoucherModal: React.FC<VoucherModalProps> = ({ pago, onClose }) => 
 
           {/* Verification Note */}
           <div className="text-[10px] text-slate-400 text-center leading-normal">
-            Comprobante digital del sistema ERP Ecosol Inmobiliaria. Sincronizado en tiempo real con la cuenta contable.
+            {empresaConfig.piePaginaVoucher.replace(/{empresa}/g, empresaConfig.nombreEmpresa)}
           </div>
         </div>
 

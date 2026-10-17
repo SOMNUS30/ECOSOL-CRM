@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { ThemeProvider } from './context/ThemeContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { DataProvider, useData } from './context/DataContext';
+import { CompanyProvider } from './context/CompanyContext';
 import { LoginView } from './components/auth/LoginView';
 import { Sidebar, ActiveModule } from './components/layout/Sidebar';
 import { Topbar } from './components/layout/Topbar';
@@ -12,6 +13,7 @@ import { PlanoLotesModule } from './components/lotes/PlanoLotesModule';
 import { CajaChicaModule } from './components/caja/CajaChicaModule';
 import { AuditoriaModule } from './components/auditoria/AuditoriaModule';
 import { UsuariosModule } from './components/usuarios/UsuariosModule';
+import { ConfiguracionModule } from './components/configuracion/ConfiguracionModule';
 import { RegistrarAbonoModal } from './components/cobranzas/RegistrarAbonoModal';
 import { ContratoDetailModal } from './components/ventas/ContratoDetailModal';
 import { VoucherModal } from './components/common/VoucherModal';
@@ -61,7 +63,7 @@ const MainAppContent: React.FC = () => {
 
           {/* Scrollable Module Workspace */}
           <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 bg-slate-50">
-            <div className="max-w-7xl mx-auto pb-12">
+            <div className="w-full max-w-[1720px] mx-auto pb-12 transition-all duration-300">
               {activeModule === 'dashboard' && <DashboardModule />}
               {activeModule === 'cobranzas' && <CobranzasModule />}
               {activeModule === 'ventas' && <VentasModule />}
@@ -69,6 +71,7 @@ const MainAppContent: React.FC = () => {
               {activeModule === 'caja' && <CajaChicaModule />}
               {activeModule === 'usuarios' && <UsuariosModule />}
               {activeModule === 'auditoria' && <AuditoriaModule />}
+              {activeModule === 'configuracion' && <ConfiguracionModule />}
             </div>
           </main>
         </div>
@@ -113,15 +116,17 @@ const MainAppContent: React.FC = () => {
 export function App() {
   return (
     <ThemeProvider>
-      <AuthProvider>
-        <DataProvider>
-          <MainAppContent />
-          <Toaster
-            position="top-right"
-            richColors
-          />
-        </DataProvider>
-      </AuthProvider>
+      <CompanyProvider>
+        <AuthProvider>
+          <DataProvider>
+            <MainAppContent />
+            <Toaster
+              position="top-right"
+              richColors
+            />
+          </DataProvider>
+        </AuthProvider>
+      </CompanyProvider>
     </ThemeProvider>
   );
 }

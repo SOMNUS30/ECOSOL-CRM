@@ -26,11 +26,11 @@ export const ContratoDetailModal: React.FC<ContratoDetailModalProps> = ({ contra
   );
 
   const isContado = contrato.forma_compra === 'CONTADO' || contrato.estado === 'LIQUIDADO';
-  const cliente = contrato.cliente;
-  const lote = contrato.lote;
+  const cliente = contrato.cliente || (contrato as any).clientes;
+  const lote = contrato.lote || (contrato as any).lotes;
+  const matchCobranza = cobranzas.find(c => c.codigo_contrato === contrato.codigo_contrato);
 
   const handleOpenAbonar = () => {
-    const matchCobranza = cobranzas.find(c => c.codigo_contrato === contrato.codigo_contrato);
     if (matchCobranza) {
       onClose();
       setSelectedContractForPayment(matchCobranza);
@@ -62,7 +62,7 @@ export const ContratoDetailModal: React.FC<ContratoDetailModalProps> = ({ contra
                 )}
               </div>
               <p className="text-xs text-slate-500">
-                Asesor: <span className="text-slate-700 font-medium">{contrato.asesor || 'Asignado'}</span> • Periodo: {contrato.mes_contrato}
+                Asesor: <span className="text-slate-700 font-medium">{contrato.asesor || 'Sin asesor asignado'}</span> • Periodo: {contrato.mes_contrato || 'N/D'}
               </p>
             </div>
           </div>
@@ -87,25 +87,27 @@ export const ContratoDetailModal: React.FC<ContratoDetailModalProps> = ({ contra
               </div>
               <div>
                 <span className="text-slate-500 block text-[11px]">Nombres y Apellidos</span>
-                <span className="text-slate-900 font-medium text-xs block">{cliente?.nombres_apellidos || 'Titular Registrado'}</span>
+                <span className="text-slate-900 font-medium text-xs block">{cliente?.nombres_apellidos || 'Sin titular registrado'}</span>
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <div>
                   <span className="text-slate-500 block text-[11px]">DNI</span>
-                  <span className="text-slate-800 font-medium">{cliente?.dni || 'N/A'}</span>
+                  <span className="text-slate-800 font-medium">{cliente?.dni || '-'}</span>
                 </div>
                 <div>
                   <span className="text-slate-500 block text-[11px]">Teléfono</span>
-                  <span className="text-slate-800 font-medium">{cliente?.telefono || 'N/A'}</span>
+                  <span className="text-slate-800 font-medium">{cliente?.telefono || '-'}</span>
                 </div>
               </div>
               <div>
                 <span className="text-slate-500 block text-[11px]">Correo</span>
-                <span className="text-slate-700 truncate block">{cliente?.correo || 'N/A'}</span>
+                <span className="text-slate-700 truncate block">{cliente?.correo || '-'}</span>
               </div>
               <div>
                 <span className="text-slate-500 block text-[11px]">Dirección</span>
-                <span className="text-slate-700 block">{cliente?.direccion || 'Ica'}, {cliente?.distrito || 'Ica'}</span>
+                <span className="text-slate-700 block">
+                  {cliente?.direccion ? `${cliente.direccion}${cliente.distrito ? `, ${cliente.distrito}` : ''}` : '-'}
+                </span>
               </div>
             </div>
 
@@ -118,38 +120,46 @@ export const ContratoDetailModal: React.FC<ContratoDetailModalProps> = ({ contra
               <div className="grid grid-cols-3 gap-2">
                 <div>
                   <span className="text-slate-500 block text-[11px]">Etapa</span>
-                  <span className="text-slate-900 font-medium">Etapa {lote?.etapa || 1}</span>
+                  <span className="text-slate-900 font-medium">Etapa {lote?.etapa ?? 1}</span>
                 </div>
                 <div>
                   <span className="text-slate-500 block text-[11px]">Manzana</span>
-                  <span className="text-slate-900 font-medium">Mz {lote?.manzana || 'A'}</span>
+                  <span className="text-slate-900 font-medium">Mz {lote?.manzana || '-'}</span>
                 </div>
                 <div>
                   <span className="text-slate-500 block text-[11px]">Lote</span>
-                  <span className="text-slate-900 font-medium">Lt {lote?.numero_lote || '1'}</span>
+                  <span className="text-slate-900 font-medium">Lt {lote?.numero_lote || '-'}</span>
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-2 pt-1">
                 <div>
                   <span className="text-slate-500 block text-[11px]">Área</span>
-                  <span className="text-slate-800 font-medium">{lote?.area_m2 || 120} m²</span>
+                  <span className="text-slate-800 font-medium">{lote?.area_m2 ? `${lote.area_m2} m²` : 'N/D'}</span>
                 </div>
                 <div>
-                  <span className="text-slate-500 block text-[11px]">Precio de Lista</span>
-                  <span className="text-slate-800 font-medium">S/ {lote?.precio_lista?.toLocaleString() || '12,000'}</span>
+                  <span className="text-slate-500 block text-[11px]">Precio de Venta</span>
+                  <span className="text-slate-800 font-medium">S/ {Number(contrato.precio_venta).toLocaleString('es-PE', { minimumFractionDigits: 2 })}</span>
                 </div>
               </div>
-              <div className="pt-2 border-t border-slate-200">
-                <span className="text-slate-500 block text-[11px]">Modalidad</span>
-                <span className="inline-block mt-0.5 text-xs font-medium text-slate-800">
-                  {isContado ? 'Venta al Contado (Liquidado)' : 'Crédito Directo en Cuotas'}
-                </span>
+              <div className="pt-2 border-t border-slate-200 grid grid-cols-2 gap-2">
+                <div>
+                  <span className="text-slate-500 block text-[11px]">Modalidad</span>
+                  <span className="text-slate-800 font-medium block mt-0.5">
+                    {isContado ? 'Venta al Contado' : 'Crédito Directo'}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-slate-500 block text-[11px]">Cantidad de Cuotas</span>
+                  <span className="text-slate-800 font-medium block mt-0.5">
+                    {isContado ? '1 cuota (Contado)' : `${contrato.cantidad_cuotas} cuotas`}
+                  </span>
+                </div>
               </div>
             </div>
           </div>
 
           {/* Resumen Financiero del Contrato */}
-          <div className="p-3.5 rounded-lg bg-slate-50 border border-slate-200 grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
+          <div className="p-3.5 rounded-lg bg-slate-50 border border-slate-200 grid grid-cols-2 sm:grid-cols-5 gap-3 text-center">
             <div>
               <span className="text-slate-500 block text-[11px]">Precio de Venta</span>
               <span className="text-sm font-semibold text-slate-900 block mt-0.5">
@@ -160,6 +170,12 @@ export const ContratoDetailModal: React.FC<ContratoDetailModalProps> = ({ contra
               <span className="text-slate-500 block text-[11px]">Cuota Inicial</span>
               <span className="text-sm font-semibold text-slate-700 block mt-0.5">
                 S/ {Number(contrato.monto_inicial).toLocaleString('es-PE', { minimumFractionDigits: 2 })}
+              </span>
+            </div>
+            <div>
+              <span className="text-slate-500 block text-[11px]">Cantidad de Cuotas</span>
+              <span className="text-sm font-semibold text-slate-700 block mt-0.5">
+                {isContado ? '1 cuota' : `${contrato.cantidad_cuotas} cuotas`}
               </span>
             </div>
             <div>

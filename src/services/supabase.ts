@@ -163,7 +163,6 @@ class SupabaseService {
   getInitialRelationalData() {
     const cachedPagos = localStorage.getItem(STORAGE_KEYS.PAGOS);
     const cachedEgresos = localStorage.getItem(STORAGE_KEYS.EGRESOS);
-    const cachedContratos = localStorage.getItem(STORAGE_KEYS.CONTRATOS);
     const cachedUsuarios = localStorage.getItem(STORAGE_KEYS.USUARIOS);
     const cachedClientes = localStorage.getItem(STORAGE_KEYS.CLIENTES);
     const cachedLotes = localStorage.getItem(STORAGE_KEYS.LOTES);
@@ -171,8 +170,8 @@ class SupabaseService {
     const clientes: Cliente[] = cachedClientes ? JSON.parse(cachedClientes) : this.initialData.clientes;
     const lotes: Lote[] = cachedLotes ? JSON.parse(cachedLotes) : this.initialData.lotes;
     const pagos: Pago[] = cachedPagos ? JSON.parse(cachedPagos) : this.initialData.pagos;
-    const egresos: Egreso[] = cachedEgresos ? JSON.parse(cachedEgresos) : this.initialData.egresos;
-    const contratos: Contrato[] = cachedContratos ? JSON.parse(cachedContratos) : this.initialData.contratos;
+    const egresos: Egreso[] = [];
+    const contratos: Contrato[] = [];
     const usuarios: UsuarioSistema[] = cachedUsuarios ? JSON.parse(cachedUsuarios) : initialUsuarios;
 
     return {
@@ -196,8 +195,7 @@ class SupabaseService {
   }
 
   getStoredContratos(): Contrato[] {
-    const cached = localStorage.getItem(STORAGE_KEYS.CONTRATOS);
-    return cached ? JSON.parse(cached) : this.initialData.contratos;
+    return [];
   }
 
   // Calculate next sequential contract code
@@ -460,36 +458,193 @@ class SupabaseService {
     };
   }
 
-  // Register new operating expense
-  async registrarEgreso(egresoData: Omit<Egreso, 'id'>): Promise<{ success: boolean; egreso: Egreso; error?: string }> {
-    const newId = Date.now();
-    const newEgreso: Egreso = {
-      ...egresoData,
-      id: newId
+  // Fetch real contracts directly from Supabase table 'contratos'
+  async getContratos(): Promise<{ data: Contrato[]; error: string | null }> {
+    try {
+      let { data, error } = await supabase
+        .from('contratos')
+        .select(`
+          id,
+          codigo_contrato,
+          asesor,
+          mes_contrato,
+          forma_compra,
+          precio_venta,
+          monto_inicial,
+          saldo_financiar,
+          cantidad_cuotas,
+          monto_cuota,
+          cuotas_pagadas_base,
+          fecha_primer_pago,
+          estado,
+          clientes ( dni, nombres_apellidos, telefono ),
+          lotes ( etapa, manzana, numero_lote, area_m2 )
+        `)
+        .order('id', { ascending: true });
+
+      if (error && error.code === 'PGRST201') {
+        const retry = await supabase
+          .from('contratos')
+          .select(`
+            id,
+            codigo_contrato,
+            asesor,
+            mes_contrato,
+            forma_compra,
+            precio_venta,
+            monto_inicial,
+            saldo_financiar,
+            cantidad_cuotas,
+            monto_cuota,
+            cuotas_pagadas_base,
+            fecha_primer_pago,
+            estado,
+            clientes!contratos_cliente_id_fkey ( dni, nombres_apellidos, telefono ),
+            lotes!contratos_lote_id_fkey ( etapa, manzana, numero_lote, area_m2 )
+          `)
+          .order('id', { ascending: true });
+        data = retry.data;
+        error = retry.error;
+      }
+
+      if (error) {
+        console.error('Error querying table contratos:', error.message);
+        return { data: [], error: error.message };
+      }
+
+      const normalized: Contrato[] = (data || []).map((row: any) => {
+        const clienteObj = Array.isArray(row.clientes) ? row.clientes[0] : row.clientes;
+        const loteObj = Array.isArray(row.lotes) ? row.lotes[0] : row.lotes;
+
+        return {
+          id: row.id,
+          codigo_contrato: row.codigo_contrato,
+          asesor: row.asesor || '',
+          mes_contrato: row.mes_contrato || '',
+          forma_compra: row.forma_compra,
+          precio_venta: Number(row.precio_venta || 0),
+          monto_inicial: Number(row.monto_inicial || 0),
+          saldo_financiar: Number(row.saldo_financiar || 0),
+          cantidad_cuotas: Number(row.cantidad_cuotas || 0),
+          monto_cuota: Number(row.monto_cuota || 0),
+          cuotas_pagadas_base: Number(row.cuotas_pagadas_base || 0),
+          fecha_primer_pago: row.fecha_primer_pago || '',
+          fecha_ultimo_pago: row.fecha_ultimo_pago || '',
+          estado: row.estado,
+          cliente_id: row.cliente_id || (clienteObj?.id ?? 0),
+          lote_id: row.lote_id || (loteObj?.id ?? 0),
+          cliente: clienteObj ? {
+            id: clienteObj.id || 0,
+            dni: clienteObj.dni || '',
+            nombres_apellidos: clienteObj.nombres_apellidos || '',
+            telefono: clienteObj.telefono || '',
+            correo: clienteObj.correo || '',
+            direccion: clienteObj.direccion || '',
+            distrito: clienteObj.distrito || '',
+            provincia: clienteObj.provincia || '',
+            departamento: clienteObj.departamento || ''
+          } : undefined,
+          clientes: clienteObj,
+          lote: loteObj ? {
+            id: loteObj.id || 0,
+            etapa: Number(loteObj.etapa || 1),
+            manzana: loteObj.manzana || '',
+            numero_lote: String(loteObj.numero_lote || ''),
+            area_m2: Number(loteObj.area_m2 || 0),
+            precio_lista: Number(row.precio_venta || 0),
+            estado: row.estado === 'ACTIVO' ? 'VENDIDO' : 'DISPONIBLE'
+          } : undefined,
+          lotes: loteObj
+        };
+      });
+
+      return { data: normalized, error: null };
+    } catch (err: any) {
+      console.error('Connection error querying contratos:', err);
+      return { data: [], error: err?.message || 'Error de conexión con la tabla contratos en Supabase' };
+    }
+  }
+
+  // Fetch real operating expenses directly from Supabase table 'egresos'
+  async getEgresos(): Promise<{ data: Egreso[]; error: string | null }> {
+    try {
+      const { data, error } = await supabase
+        .from('egresos')
+        .select('*')
+        .order('fecha', { ascending: false });
+
+      if (error) {
+        console.error('Error querying table egresos:', error.message);
+        return { data: [], error: error.message };
+      }
+
+      const normalized: Egreso[] = (data || []).map((d: any) => ({
+        id: d.id,
+        fecha: d.fecha,
+        tipo: d.tipo,
+        categoria: d.categoria,
+        descripcion: d.descripcion,
+        monto: Number(d.monto || 0)
+      }));
+
+      return { data: normalized, error: null };
+    } catch (err: any) {
+      console.error('Connection error querying table egresos:', err);
+      return { data: [], error: err?.message || 'Error de conexión con la tabla egresos en Supabase' };
+    }
+  }
+
+  // Register new operating expense directly into Supabase table 'egresos'
+  async registrarEgreso(egresoData: Omit<Egreso, 'id'>): Promise<{ success: boolean; egreso?: Egreso; error?: string }> {
+    const payload = {
+      fecha: egresoData.fecha,
+      tipo: egresoData.tipo,
+      categoria: egresoData.categoria,
+      descripcion: egresoData.descripcion,
+      monto: Number(egresoData.monto)
     };
 
     try {
-      await supabase
+      const { data, error } = await supabase
         .from('egresos')
-        .insert([{
-          fecha: egresoData.fecha,
-          tipo: egresoData.tipo,
-          categoria: egresoData.categoria,
-          descripcion: egresoData.descripcion,
-          monto: Number(egresoData.monto)
-        }]);
-    } catch (err) {
-      console.warn('Error inserting egreso:', err);
+        .insert([payload])
+        .select();
+
+      if (error) {
+        console.error('Supabase error inserting into egresos:', error);
+        return { success: false, error: error.message };
+      }
+
+      if (data && data.length > 0) {
+        const row = data[0];
+        const newEgreso: Egreso = {
+          id: row.id,
+          fecha: row.fecha,
+          tipo: row.tipo,
+          categoria: row.categoria,
+          descripcion: row.descripcion,
+          monto: Number(row.monto)
+        };
+        return {
+          success: true,
+          egreso: newEgreso
+        };
+      }
+
+      return {
+        success: true,
+        egreso: {
+          id: Date.now(),
+          ...payload
+        }
+      };
+    } catch (err: any) {
+      console.error('Error inserting egreso:', err);
+      return {
+        success: false,
+        error: err?.message || 'Error al comunicarse con Supabase'
+      };
     }
-
-    const current = this.getStoredEgresos();
-    const updated = [newEgreso, ...current];
-    localStorage.setItem(STORAGE_KEYS.EGRESOS, JSON.stringify(updated));
-
-    return {
-      success: true,
-      egreso: newEgreso
-    };
   }
 
   // User Management
@@ -523,10 +678,6 @@ class SupabaseService {
     return cached ? JSON.parse(cached) : this.initialData.pagos;
   }
 
-  private getStoredEgresos(): Egreso[] {
-    const cached = localStorage.getItem(STORAGE_KEYS.EGRESOS);
-    return cached ? JSON.parse(cached) : this.initialData.egresos;
-  }
 
   private applyLocalPaymentOverrides(cobranzas: ControlCobranza[]): ControlCobranza[] {
     const storedOverrides = localStorage.getItem(STORAGE_KEYS.OVERRIDES);

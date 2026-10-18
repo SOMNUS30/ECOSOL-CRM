@@ -67,6 +67,30 @@ export const CompanyProvider: React.FC<{ children: React.ReactNode }> = ({ child
     });
   }, []);
 
+  // Synchronize browser tab favicon and document title with company config
+  useEffect(() => {
+    // 1. Update Document Title
+    if (empresaConfig.nombreEmpresa) {
+      document.title = `${empresaConfig.nombreEmpresa} - ERP & Gestión de Cobranzas`;
+    }
+
+    // 2. Update Browser Tab Favicon dynamically
+    if (empresaConfig.logoUrl) {
+      try {
+        const existingIcons = document.querySelectorAll("link[rel*='icon']");
+        existingIcons.forEach(el => el.remove());
+
+        const newLink = document.createElement('link');
+        newLink.rel = 'icon';
+        newLink.type = empresaConfig.logoUrl.startsWith('data:image/jpeg') ? 'image/jpeg' : 'image/png';
+        newLink.href = empresaConfig.logoUrl;
+        document.head.appendChild(newLink);
+      } catch (err) {
+        console.warn('Error updating browser favicon:', err);
+      }
+    }
+  }, [empresaConfig.logoUrl, empresaConfig.nombreEmpresa]);
+
   const updateEmpresaConfig = async (updates: Partial<EmpresaConfig>) => {
     const updated = { ...empresaConfig, ...updates };
     setEmpresaConfig(updated);

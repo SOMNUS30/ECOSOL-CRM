@@ -24,7 +24,7 @@ interface SidebarProps {
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({ activeModule, setActiveModule }) => {
-  const { cobranzas, lotes, metrics, usuarios } = useData();
+  const { cobranzas, lotes, metrics, usuarios, pagos } = useData();
   const { user, canAccessFinanzas, canAccessUsuarios } = useAuth();
   const { empresaConfig } = useCompany();
 
@@ -80,9 +80,9 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeModule, setActiveModule 
     },
     {
       id: 'caja' as ActiveModule,
-      label: 'Caja Chica & Egresos',
+      label: 'Caja & Flujo de Fondos',
       icon: Wallet,
-      badge: null,
+      badge: `${pagos.length}`,
       visible: !user || canAccessFinanzas
     },
     {

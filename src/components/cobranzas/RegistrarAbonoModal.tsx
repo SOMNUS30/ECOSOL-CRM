@@ -63,7 +63,7 @@ export const RegistrarAbonoModal: React.FC<RegistrarAbonoModalProps> = ({ contra
 
     try {
       const ok = await registrarAbono({
-        contrato_id: contract.codigo_contrato,
+        contrato_id: contract.contrato_id,
         tipo_pago: tipoPago,
         monto: parsedMonto,
         numero_operacion: numeroOperacion.trim().toUpperCase(),

@@ -1,7 +1,7 @@
 export type EstadoLote = 'VENDIDO' | 'DISPONIBLE' | 'DESISTIDO';
 export type EstadoContrato = 'ACTIVO' | 'LIQUIDADO' | 'DESISTIDO';
 export type FormaCompra = 'CREDITO' | 'CONTADO';
-export type TipoPago = 'CUOTA' | 'INICIAL' | 'AL CONTADO' | 'SEPARACION' | 'AMORTIZACION';
+export type TipoPago = 'CUOTA' | 'CUOTAS MENSUALES' | 'INICIAL' | 'AL CONTADO' | 'SEPARACION' | 'AMORTIZACION' | string;
 export type MetodoPago = 'BCP' | 'YAPE' | 'INTERBANK' | 'BANBIF' | 'EFECTIVO';
 export type TipoEgreso = 'FIJO' | 'VARIABLE';
 export type CategoriaEgreso = 
@@ -78,7 +78,7 @@ export interface Contrato {
 
 export interface Pago {
   id: number | string;
-  contrato_id: number | string;
+  contrato_id?: number | string | null;
   tipo_pago: TipoPago;
   monto: number;
   numero_operacion: string;

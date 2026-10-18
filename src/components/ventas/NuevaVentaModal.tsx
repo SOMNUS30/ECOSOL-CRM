@@ -225,23 +225,23 @@ export const NuevaVentaModal: React.FC<NuevaVentaModalProps> = ({
   return (
     <>
       <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs animate-fadeIn">
-        <div className="relative w-full max-w-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-2xl p-5 flex flex-col max-h-[92vh] overflow-hidden">
+        <div className="relative w-full max-w-2xl bg-white border border-slate-200 rounded-xl shadow-2xl p-5 flex flex-col max-h-[92vh] overflow-hidden">
           {/* Header */}
-          <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800 mb-4 shrink-0">
+          <div className="flex items-center justify-between pb-3 border-b border-slate-200 mb-4 shrink-0">
             <div className="flex items-center gap-2.5">
-              <div className="w-9 h-9 rounded-lg bg-emerald-50 dark:bg-emerald-950 border border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-400 flex items-center justify-center font-bold">
+              <div className="w-9 h-9 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-700 flex items-center justify-center font-bold">
                 <FilePlus className="w-5 h-5" />
               </div>
               <div>
                 <div className="flex items-center gap-2">
-                  <h2 className="text-base font-bold text-slate-900 dark:text-white">
+                  <h2 className="text-base font-bold text-slate-900">
                     Registrar Nueva Venta / Contrato
                   </h2>
-                  <span className="font-mono text-xs font-semibold px-2 py-0.5 rounded bg-emerald-50 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+                  <span className="font-mono text-xs font-semibold px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200">
                     {nextContractCode}
                   </span>
                 </div>
-                <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                <p className="text-[11px] text-slate-500">
                   Emisión de contrato inmobiliario y actualización de lotes en Supabase
                 </p>
               </div>
@@ -249,7 +249,7 @@ export const NuevaVentaModal: React.FC<NuevaVentaModalProps> = ({
 
             <button
               onClick={onClose}
-              className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 rounded-md hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+              className="p-1.5 text-slate-400 hover:text-slate-600 rounded-md hover:bg-slate-100 transition-colors cursor-pointer"
             >
               <X className="w-4 h-4" />
             </button>
@@ -257,7 +257,7 @@ export const NuevaVentaModal: React.FC<NuevaVentaModalProps> = ({
 
           {/* Validation Error Banner */}
           {errorMsg && (
-            <div className="mb-3 p-2.5 rounded-lg bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-300 text-xs flex items-center gap-2 shrink-0">
+            <div className="mb-3 p-2.5 rounded-lg bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center gap-2 shrink-0">
               <AlertCircle className="w-4 h-4 shrink-0" />
               <span>{errorMsg}</span>
             </div>
@@ -266,9 +266,9 @@ export const NuevaVentaModal: React.FC<NuevaVentaModalProps> = ({
           {/* Scrollable Form Body */}
           <form onSubmit={handleSubmit} className="overflow-y-auto space-y-4 text-xs pr-1 flex-1">
             {/* 1. SELECCIÓN DE CLIENTE */}
-            <div className="p-3.5 rounded-lg bg-slate-50 dark:bg-slate-950/60 border border-slate-200 dark:border-slate-800 space-y-2.5">
+            <div className="p-3.5 rounded-lg bg-slate-50 border border-slate-200 space-y-2.5">
               <div className="flex items-center justify-between">
-                <label className="font-semibold text-slate-800 dark:text-slate-200 text-xs flex items-center gap-1.5">
+                <label className="font-semibold text-slate-800 text-xs flex items-center gap-1.5">
                   <User className="w-3.5 h-3.5 text-slate-500" />
                   <span>1. Cliente Titular del Contrato</span>
                 </label>
@@ -276,7 +276,7 @@ export const NuevaVentaModal: React.FC<NuevaVentaModalProps> = ({
                 <button
                   type="button"
                   onClick={() => setIsSubModalClienteOpen(true)}
-                  className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-medium text-emerald-700 dark:text-emerald-400 bg-white dark:bg-slate-900 border border-emerald-300 dark:border-emerald-700 rounded-md hover:bg-emerald-50 dark:hover:bg-emerald-950/70 transition-colors cursor-pointer shadow-xs"
+                  className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-medium text-emerald-700 bg-white border border-emerald-300 rounded-md hover:bg-emerald-50 transition-colors cursor-pointer shadow-xs"
                 >
                   <UserPlus className="w-3 h-3" />
                   <span>+ Nuevo Cliente</span>
@@ -285,12 +285,12 @@ export const NuevaVentaModal: React.FC<NuevaVentaModalProps> = ({
 
               {selectedCliente ? (
                 /* Selected Client Pill */
-                <div className="p-2.5 rounded-md bg-white dark:bg-slate-900 border border-emerald-300 dark:border-emerald-700 flex items-center justify-between">
+                <div className="p-2.5 rounded-md bg-white border border-emerald-300 flex items-center justify-between">
                   <div>
-                    <span className="font-semibold text-slate-900 dark:text-white text-xs block">
+                    <span className="font-semibold text-slate-900 text-xs block">
                       {selectedCliente.nombres_apellidos}
                     </span>
-                    <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                    <span className="text-[11px] text-slate-500">
                       DNI: <b>{selectedCliente.dni}</b> • Cel: {selectedCliente.telefono} • {selectedCliente.distrito || 'Ica'}
                     </span>
                   </div>
@@ -300,7 +300,7 @@ export const NuevaVentaModal: React.FC<NuevaVentaModalProps> = ({
                       setSelectedCliente(null);
                       setClientSearchTerm('');
                     }}
-                    className="text-xs text-slate-400 hover:text-rose-600 px-2 py-1 rounded hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                    className="text-xs text-slate-400 hover:text-rose-600 px-2 py-1 rounded hover:bg-slate-100 transition-colors"
                   >
                     Cambiar
                   </button>
@@ -319,12 +319,12 @@ export const NuevaVentaModal: React.FC<NuevaVentaModalProps> = ({
                         setShowClientDropdown(true);
                       }}
                       placeholder="Buscar por DNI o Nombres del cliente..."
-                      className="w-full pl-8 pr-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-800 dark:text-slate-100 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                      className="w-full pl-8 pr-3 py-2 bg-white border border-slate-200 rounded-lg text-slate-800 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500"
                     />
                   </div>
 
                   {showClientDropdown && (
-                    <div className="absolute left-0 right-0 top-full mt-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg shadow-lg z-20 max-h-48 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800">
+                    <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-lg shadow-lg z-20 max-h-48 overflow-y-auto divide-y divide-slate-100">
                       {filteredClients.length === 0 ? (
                         <div className="p-3 text-center text-slate-400 text-xs">
                           <p>No se encontraron clientes coincidentes.</p>
@@ -334,7 +334,7 @@ export const NuevaVentaModal: React.FC<NuevaVentaModalProps> = ({
                               setShowClientDropdown(false);
                               setIsSubModalClienteOpen(true);
                             }}
-                            className="mt-1 text-emerald-600 dark:text-emerald-400 font-semibold hover:underline"
+                            className="mt-1 text-emerald-600 font-semibold hover:underline"
                           >
                             + Registrar nuevo cliente ahora
                           </button>
@@ -347,17 +347,17 @@ export const NuevaVentaModal: React.FC<NuevaVentaModalProps> = ({
                               setSelectedCliente(c);
                               setShowClientDropdown(false);
                             }}
-                            className="p-2.5 hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer transition-colors flex items-center justify-between"
+                            className="p-2.5 hover:bg-slate-50 cursor-pointer transition-colors flex items-center justify-between"
                           >
                             <div>
-                              <span className="font-medium text-slate-800 dark:text-slate-200 block">
+                              <span className="font-medium text-slate-800 block">
                                 {c.nombres_apellidos}
                               </span>
                               <span className="text-[11px] text-slate-400">
                                 DNI: {c.dni} • Cel: {c.telefono}
                               </span>
                             </div>
-                            <span className="text-[11px] text-emerald-600 dark:text-emerald-400 font-medium">
+                            <span className="text-[11px] text-emerald-600 font-medium">
                               Seleccionar
                             </span>
                           </div>
@@ -370,26 +370,26 @@ export const NuevaVentaModal: React.FC<NuevaVentaModalProps> = ({
             </div>
 
             {/* 2. SELECCIÓN DE LOTE DISPONIBLE */}
-            <div className="p-3.5 rounded-lg bg-slate-50 dark:bg-slate-950/60 border border-slate-200 dark:border-slate-800 space-y-2">
+            <div className="p-3.5 rounded-lg bg-slate-50 border border-slate-200 space-y-2">
               <div className="flex items-center justify-between">
-                <label className="font-semibold text-slate-800 dark:text-slate-200 text-xs flex items-center gap-1.5">
+                <label className="font-semibold text-slate-800 text-xs flex items-center gap-1.5">
                   <Building2 className="w-3.5 h-3.5 text-slate-500" />
                   <span>2. Lote del Proyecto (Únicamente Disponibles)</span>
                 </label>
-                <span className="text-[11px] text-emerald-700 dark:text-emerald-400 font-medium">
+                <span className="text-[11px] text-emerald-700 font-medium">
                   {availableLotes.length} lotes disponibles
                 </span>
               </div>
 
               {availableLotes.length === 0 ? (
-                <div className="p-2.5 rounded-md bg-amber-50 dark:bg-amber-950/50 border border-amber-200 text-amber-700 text-xs">
+                <div className="p-2.5 rounded-md bg-amber-50 border border-amber-200 text-amber-700 text-xs">
                   No hay lotes con estado 'DISPONIBLE' actualmente en el inventario.
                 </div>
               ) : (
                 <select
                   value={selectedLoteId}
                   onChange={(e) => handleLoteChange(e.target.value)}
-                  className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-800 dark:text-slate-100 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500 cursor-pointer font-medium"
+                  className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-slate-800 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500 cursor-pointer font-medium"
                 >
                   <option value="">Seleccione un lote...</option>
                   {availableLotes.map((l) => (
@@ -401,12 +401,12 @@ export const NuevaVentaModal: React.FC<NuevaVentaModalProps> = ({
               )}
 
               {selectedLote && (
-                <div className="text-[11px] text-slate-500 dark:text-slate-400 flex items-center gap-3 pt-1">
+                <div className="text-[11px] text-slate-500 flex items-center gap-3 pt-1">
                   <span>Área: <b>{selectedLote.area_m2} m²</b></span>
                   <span>•</span>
                   <span>Zonificación: <b>Residencial R-2</b></span>
                   <span>•</span>
-                  <span>Precio de Lista: <b className="text-emerald-600 dark:text-emerald-400">S/ {Number(selectedLote.precio_lista).toLocaleString('es-PE', { minimumFractionDigits: 2 })}</b></span>
+                  <span>Precio de Lista: <b className="text-emerald-600">S/ {Number(selectedLote.precio_lista).toLocaleString('es-PE', { minimumFractionDigits: 2 })}</b></span>
                 </div>
               )}
             </div>
@@ -414,7 +414,7 @@ export const NuevaVentaModal: React.FC<NuevaVentaModalProps> = ({
             {/* 3. DATOS DE LA VENTA: ASESOR Y FECHAS */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div>
-                <label className="block text-[11px] font-medium text-slate-700 dark:text-slate-300 mb-1">
+                <label className="block text-[11px] font-medium text-slate-700 mb-1">
                   Asesor de Ventas
                 </label>
                 <input
@@ -422,26 +422,26 @@ export const NuevaVentaModal: React.FC<NuevaVentaModalProps> = ({
                   value={asesor}
                   onChange={(e) => setAsesor(e.target.value)}
                   placeholder="Nombre del asesor"
-                  className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-800 dark:text-slate-100 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                  className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-slate-800 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500"
                   required
                 />
               </div>
 
               <div>
-                <label className="block text-[11px] font-medium text-slate-700 dark:text-slate-300 mb-1">
+                <label className="block text-[11px] font-medium text-slate-700 mb-1">
                   Fecha de Contrato
                 </label>
                 <input
                   type="date"
                   value={fechaContrato}
                   onChange={(e) => setFechaContrato(e.target.value)}
-                  className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-800 dark:text-slate-100 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                  className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-slate-800 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500"
                   required
                 />
               </div>
 
               <div>
-                <label className="block text-[11px] font-medium text-slate-700 dark:text-slate-300 mb-1">
+                <label className="block text-[11px] font-medium text-slate-700 mb-1">
                   Mes / Periodo
                 </label>
                 <input
@@ -449,7 +449,7 @@ export const NuevaVentaModal: React.FC<NuevaVentaModalProps> = ({
                   value={mesContrato}
                   onChange={(e) => setMesContrato(e.target.value)}
                   placeholder="OCTUBRE 2026"
-                  className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-800 dark:text-slate-100 text-xs uppercase focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                  className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-slate-800 text-xs uppercase focus:outline-none focus:ring-1 focus:ring-emerald-500"
                   required
                 />
               </div>
@@ -457,18 +457,18 @@ export const NuevaVentaModal: React.FC<NuevaVentaModalProps> = ({
 
             {/* 4. MODALIDAD DE COMPRA (TOGGLE TABS) */}
             <div className="space-y-3">
-              <label className="block text-[11px] font-medium text-slate-700 dark:text-slate-300">
+              <label className="block text-[11px] font-medium text-slate-700">
                 Modalidad de Compra
               </label>
 
-              <div className="grid grid-cols-2 gap-2 p-1 bg-slate-100 dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700">
+              <div className="grid grid-cols-2 gap-2 p-1 bg-slate-100 rounded-lg border border-slate-200">
                 <button
                   type="button"
                   onClick={() => setFormaCompra('CREDITO')}
                   className={`py-2 px-3 rounded-md text-xs font-semibold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
                     formaCompra === 'CREDITO'
-                      ? 'bg-white dark:bg-slate-900 text-emerald-700 dark:text-emerald-400 shadow-xs'
-                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+                      ? 'bg-white text-emerald-700 shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
                   <CreditCard className="w-3.5 h-3.5" />
@@ -480,8 +480,8 @@ export const NuevaVentaModal: React.FC<NuevaVentaModalProps> = ({
                   onClick={() => setFormaCompra('CONTADO')}
                   className={`py-2 px-3 rounded-md text-xs font-semibold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
                     formaCompra === 'CONTADO'
-                      ? 'bg-white dark:bg-slate-900 text-blue-700 dark:text-blue-400 shadow-xs'
-                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+                      ? 'bg-white text-blue-700 shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
                   <Wallet className="w-3.5 h-3.5" />
@@ -490,11 +490,11 @@ export const NuevaVentaModal: React.FC<NuevaVentaModalProps> = ({
               </div>
 
               {/* FINANCIAL INPUTS ACCORDING TO MODALITY */}
-              <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-950/70 border border-slate-200 dark:border-slate-800 space-y-3.5">
+              <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3.5">
                 {/* Precio de Venta */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-[11px] font-medium text-slate-700 dark:text-slate-300 mb-1">
+                    <label className="block text-[11px] font-medium text-slate-700 mb-1">
                       Precio de Venta Pactado (S/.) <span className="text-rose-500">*</span>
                     </label>
                     <div className="relative">
@@ -507,14 +507,14 @@ export const NuevaVentaModal: React.FC<NuevaVentaModalProps> = ({
                         min="100"
                         value={precioVenta}
                         onChange={(e) => setPrecioVenta(e.target.value)}
-                        className="w-full pl-8 pr-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-slate-100 font-bold text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                        className="w-full pl-8 pr-3 py-2 bg-white border border-slate-200 rounded-lg text-slate-900 font-bold text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500"
                         required
                       />
                     </div>
                   </div>
 
                   <div>
-                    <label className="block text-[11px] font-medium text-slate-700 dark:text-slate-300 mb-1">
+                    <label className="block text-[11px] font-medium text-slate-700 mb-1">
                       {isContado ? 'Monto Abonado al Contado' : 'Cuota Inicial / Abono (S/.)'}
                     </label>
                     <div className="relative">
@@ -528,7 +528,7 @@ export const NuevaVentaModal: React.FC<NuevaVentaModalProps> = ({
                         disabled={isContado}
                         value={isContado ? precioVenta : montoInicial}
                         onChange={(e) => setMontoInicial(e.target.value)}
-                        className="w-full pl-8 pr-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-slate-100 font-semibold text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500 disabled:opacity-75 disabled:bg-slate-100 dark:disabled:bg-slate-800"
+                        className="w-full pl-8 pr-3 py-2 bg-white border border-slate-200 rounded-lg text-slate-900 font-semibold text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500 disabled:opacity-75 disabled:bg-slate-100"
                         required
                       />
                     </div>
@@ -537,15 +537,15 @@ export const NuevaVentaModal: React.FC<NuevaVentaModalProps> = ({
 
                 {/* Conditional Credit Fields */}
                 {!isContado ? (
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2 border-t border-slate-200/80 dark:border-slate-800">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2 border-t border-slate-200/80">
                     <div>
-                      <label className="block text-[11px] font-medium text-slate-700 dark:text-slate-300 mb-1">
+                      <label className="block text-[11px] font-medium text-slate-700 mb-1">
                         Cantidad de Cuotas
                       </label>
                       <select
                         value={cantidadCuotas}
                         onChange={(e) => setCantidadCuotas(Number(e.target.value))}
-                        className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-800 dark:text-slate-100 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500 cursor-pointer"
+                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-slate-800 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500 cursor-pointer"
                       >
                         <option value={12}>12 meses (1 año)</option>
                         <option value={24}>24 meses (2 años)</option>
@@ -557,49 +557,49 @@ export const NuevaVentaModal: React.FC<NuevaVentaModalProps> = ({
                     </div>
 
                     <div>
-                      <label className="block text-[11px] font-medium text-slate-700 dark:text-slate-300 mb-1">
+                      <label className="block text-[11px] font-medium text-slate-700 mb-1">
                         Saldo a Financiar
                       </label>
-                      <div className="px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg font-bold text-slate-900 dark:text-slate-100 text-xs">
+                      <div className="px-3 py-2 bg-white border border-slate-200 rounded-lg font-bold text-slate-900 text-xs">
                         S/ {saldoFinanciar.toLocaleString('es-PE', { minimumFractionDigits: 2 })}
                       </div>
                     </div>
 
                     <div>
-                      <label className="block text-[11px] font-medium text-slate-700 dark:text-slate-300 mb-1">
+                      <label className="block text-[11px] font-medium text-slate-700 mb-1">
                         Cuota Mensual Estimada
                       </label>
-                      <div className="px-3 py-2 bg-emerald-50 dark:bg-emerald-950 border border-emerald-200 dark:border-emerald-800 rounded-lg font-bold text-emerald-700 dark:text-emerald-300 text-xs">
+                      <div className="px-3 py-2 bg-emerald-50 border border-emerald-200 rounded-lg font-bold text-emerald-700 text-xs">
                         S/ {montoCuota.toLocaleString('es-PE', { minimumFractionDigits: 2 })}
                       </div>
                     </div>
 
                     <div className="sm:col-span-3">
-                      <label className="block text-[11px] font-medium text-slate-700 dark:text-slate-300 mb-1">
+                      <label className="block text-[11px] font-medium text-slate-700 mb-1">
                         Fecha de Primer Vencimiento (Cuota #1)
                       </label>
                       <input
                         type="date"
                         value={fechaPrimerPago}
                         onChange={(e) => setFechaPrimerPago(e.target.value)}
-                        className="w-full sm:w-1/2 px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-800 dark:text-slate-100 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                        className="w-full sm:w-1/2 px-3 py-2 bg-white border border-slate-200 rounded-lg text-slate-800 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500"
                         required
                       />
                     </div>
                   </div>
                 ) : (
-                  <div className="p-3 rounded-lg bg-blue-50/70 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800 text-[11px] text-blue-800 dark:text-blue-300 flex items-center justify-between">
+                  <div className="p-3 rounded-lg bg-blue-50/70 border border-blue-200 text-[11px] text-blue-800 flex items-center justify-between">
                     <div>
                       <span className="font-semibold block">Venta al Contado 100% Amortizada</span>
                       <span>El saldo quedará en S/ 0.00 con 0 cuotas pendientes y estado <b>LIQUIDADO</b>.</span>
                     </div>
-                    <CheckCircle2 className="w-5 h-5 text-blue-600 dark:text-blue-400 shrink-0" />
+                    <CheckCircle2 className="w-5 h-5 text-blue-600 shrink-0" />
                   </div>
                 )}
 
                 {/* 5. MEDIO DE PAGO & VOUCHER INICIAL */}
-                <div className="pt-3 border-t border-slate-200/80 dark:border-slate-800 space-y-2.5">
-                  <label className="block text-[11px] font-medium text-slate-700 dark:text-slate-300">
+                <div className="pt-3 border-t border-slate-200/80 space-y-2.5">
+                  <label className="block text-[11px] font-medium text-slate-700">
                     Canal y Operación Bancaria ({isContado ? 'Pago Total Contado' : 'Abono de Cuota Inicial'})
                   </label>
 
@@ -611,8 +611,8 @@ export const NuevaVentaModal: React.FC<NuevaVentaModalProps> = ({
                         onClick={() => setMetodoPago(metodo)}
                         className={`px-2 py-1.5 rounded-lg text-xs font-medium transition-colors flex items-center justify-center gap-1 border cursor-pointer ${
                           metodoPago === metodo
-                            ? 'bg-emerald-50 dark:bg-emerald-950 border-emerald-500 text-emerald-800 dark:text-emerald-300 shadow-xs'
-                            : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-50'
+                            ? 'bg-emerald-50 border-emerald-500 text-emerald-800 shadow-xs'
+                            : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
                         }`}
                       >
                         {getMethodIcon(metodo)}
@@ -622,7 +622,7 @@ export const NuevaVentaModal: React.FC<NuevaVentaModalProps> = ({
                   </div>
 
                   <div>
-                    <label className="block text-[11px] font-medium text-slate-700 dark:text-slate-300 mb-1">
+                    <label className="block text-[11px] font-medium text-slate-700 mb-1">
                       N° de Operación Bancaria / Referencia
                     </label>
                     <div className="relative">
@@ -632,7 +632,7 @@ export const NuevaVentaModal: React.FC<NuevaVentaModalProps> = ({
                         value={numeroOperacion}
                         onChange={(e) => setNumeroOperacion(e.target.value)}
                         placeholder="Ej: OP-984210"
-                        className="w-full pl-8 pr-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-slate-100 font-mono text-xs uppercase focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                        className="w-full pl-8 pr-3 py-2 bg-white border border-slate-200 rounded-lg text-slate-900 font-mono text-xs uppercase focus:outline-none focus:ring-1 focus:ring-emerald-500"
                         required
                       />
                     </div>
@@ -642,12 +642,12 @@ export const NuevaVentaModal: React.FC<NuevaVentaModalProps> = ({
             </div>
 
             {/* Action buttons */}
-            <div className="pt-3 border-t border-slate-200 dark:border-slate-800 flex items-center justify-end gap-2 mt-4 shrink-0">
+            <div className="pt-3 border-t border-slate-200 flex items-center justify-end gap-2 mt-4 shrink-0">
               <button
                 type="button"
                 onClick={onClose}
                 disabled={isSubmitting}
-                className="px-3.5 py-1.5 text-xs font-medium text-slate-600 dark:text-slate-300 hover:text-slate-800 dark:hover:text-white bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg border border-slate-200 dark:border-slate-700 transition-colors cursor-pointer"
+                className="px-3.5 py-1.5 text-xs font-medium text-slate-600 hover:text-slate-800 bg-white hover:bg-slate-100 rounded-lg border border-slate-200 transition-colors cursor-pointer"
               >
                 Cancelar
               </button>

@@ -2,8 +2,8 @@ import { createClient } from '@supabase/supabase-js';
 import { ControlCobranza, Pago, Egreso, Cliente, Lote, Contrato, UsuarioSistema, EstadoCobranza, FormaCompra, MetodoPago } from '../types/database';
 import { initialCobranzas, initialUsuarios, generateRelationalSeed } from './seedData';
 
-export const SUPABASE_URL = 'https://agaeaaskhhudknbvncku.supabase.co';
-export const SUPABASE_ANON_KEY = 'sb_publishable_Fu3eyGU3dOW5n3Q3WW-5og_zA2kcF8u';
+export const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://agaeaaskhhudknbvncku.supabase.co';
+export const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || 'sb_publishable_Fu3eyGU3dOW5n3Q3WW-5og_zA2kcF8u';
 
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   auth: {
@@ -135,9 +135,10 @@ class SupabaseService {
           };
         });
 
-        const merged = this.applyLocalPaymentOverrides(normalized);
-        localStorage.setItem(STORAGE_KEYS.COBRANZAS, JSON.stringify(merged));
-        return merged;
+        // Live Supabase view is authoritative; persist to local cache and clear stale overrides
+        localStorage.setItem(STORAGE_KEYS.COBRANZAS, JSON.stringify(normalized));
+        localStorage.removeItem(STORAGE_KEYS.OVERRIDES);
+        return normalized;
       }
     } catch (e) {
       console.warn('Network issue fetching cobranzas, falling back to cache:', e);
@@ -367,7 +368,24 @@ class SupabaseService {
 
       // c) If initial payment exists, insert into pagos
       if (newPago) {
+        let nextVentaPagoId = 711;
+        try {
+          const { data: maxRow } = await supabase
+            .from('pagos')
+            .select('id')
+            .order('id', { ascending: false })
+            .limit(1);
+          if (maxRow && maxRow[0]?.id) {
+            nextVentaPagoId = Number(maxRow[0].id) + 1;
+          }
+        } catch {
+          nextVentaPagoId = Date.now();
+        }
+
+        newPago.id = nextVentaPagoId;
+
         await supabase.from('pagos').insert([{
+          id: nextVentaPagoId,
           contrato_id: contratoId,
           tipo_pago: newPago.tipo_pago,
           monto: newPago.monto,
@@ -419,43 +437,357 @@ class SupabaseService {
     };
 
     try {
-      // 1. Try real Supabase insert into 'pagos'
-      await supabase
+      // 1. Resolve target contract from Supabase to obtain current cuotas_pagadas_base and numeric ID
+      let targetContrato: any = null;
+      if (pagoData.codigo_contrato) {
+        const { data } = await supabase
+          .from('contratos')
+          .select('id, codigo_contrato, cuotas_pagadas_base, saldo_financiar, monto_cuota, estado')
+          .eq('codigo_contrato', pagoData.codigo_contrato)
+          .maybeSingle();
+        targetContrato = data;
+      }
+      
+      if (!targetContrato && pagoData.contrato_id) {
+        const numericId = Number(pagoData.contrato_id);
+        if (!isNaN(numericId)) {
+          const { data } = await supabase
+            .from('contratos')
+            .select('id, codigo_contrato, cuotas_pagadas_base, saldo_financiar, monto_cuota, estado')
+            .eq('id', numericId)
+            .maybeSingle();
+          targetContrato = data;
+        }
+      }
+
+      const numericContractId = targetContrato?.id || (typeof pagoData.contrato_id === 'number' ? pagoData.contrato_id : null);
+
+      // Query the current max ID in table 'pagos' to assign the next numeric ID (since pagos.id lacks auto-increment)
+      let nextPagoId = 711;
+      try {
+        const { data: maxRow } = await supabase
+          .from('pagos')
+          .select('id')
+          .order('id', { ascending: false })
+          .limit(1);
+        if (maxRow && maxRow[0]?.id) {
+          nextPagoId = Number(maxRow[0].id) + 1;
+        }
+      } catch {
+        nextPagoId = Date.now();
+      }
+
+      newPago.id = nextPagoId;
+      newPago.contrato_id = numericContractId;
+      newPago.codigo_contrato = targetContrato?.codigo_contrato || pagoData.codigo_contrato || (numericContractId ? `CTR-${String(numericContractId).padStart(4, '0')}` : 'S/A');
+      newPago.propietario = pagoData.propietario || 'Ingreso Directo';
+
+      // 2. Real Supabase insert into 'pagos' with explicit nextPagoId
+      const { data: insertedPago, error: insertError } = await supabase
         .from('pagos')
         .insert([{
-          contrato_id: pagoData.contrato_id,
+          id: nextPagoId,
+          contrato_id: numericContractId,
           tipo_pago: pagoData.tipo_pago,
           monto: Number(pagoData.monto),
           numero_operacion: pagoData.numero_operacion,
           metodo_pago: pagoData.metodo_pago,
           fecha_pago: pagoData.fecha_pago
-        }]);
+        }])
+        .select()
+        .maybeSingle();
 
-      // 2. Try updating 'contratos' table: cuotas_pagadas_base = cuotas_pagadas_base + 1
-      if (pagoData.contrato_id) {
-        await supabase
+      if (insertError) {
+        console.error('Error al insertar pago en Supabase:', insertError);
+      } else if (insertedPago) {
+        newPago.id = insertedPago.id;
+      }
+
+      // 3. Update 'contratos' table: increment cuotas_pagadas_base, reduce saldo_financiar, update fecha_ultimo_pago & estado
+      if (targetContrato) {
+        const currentCuotas = Number(targetContrato.cuotas_pagadas_base || 0);
+        const montoCuota = Number(targetContrato.monto_cuota) || 1;
+        const cuotasAbonadas = Math.max(1, Math.round(Number(pagoData.monto) / montoCuota));
+        const nuevasCuotas = currentCuotas + cuotasAbonadas;
+        const nuevoSaldo = Math.max(0, Number(targetContrato.saldo_financiar || 0) - Number(pagoData.monto));
+        const nuevoEstado = nuevoSaldo === 0 ? 'LIQUIDADO' : targetContrato.estado;
+
+        const { error: updateContractError } = await supabase
           .from('contratos')
           .update({
-            fecha_ultimo_pago: pagoData.fecha_pago
+            cuotas_pagadas_base: nuevasCuotas,
+            saldo_financiar: nuevoSaldo,
+            fecha_ultimo_pago: pagoData.fecha_pago,
+            estado: nuevoEstado
           })
-          .eq('codigo_contrato', pagoData.codigo_contrato || String(pagoData.contrato_id));
+          .eq('id', targetContrato.id);
+
+        if (updateContractError) {
+          console.error('Error al actualizar cuotas_pagadas_base en tabla contratos de Supabase:', updateContractError);
+        }
       }
     } catch (err) {
       console.warn('Network issue or RLS handled gracefully during insert:', err);
     }
 
-    // 3. Persist locally to synchronized cache
+    // 4. Persist locally to synchronized cache
     const currentPagos = this.getStoredPagos();
     const updatedPagos = [newPago, ...currentPagos];
     localStorage.setItem(STORAGE_KEYS.PAGOS, JSON.stringify(updatedPagos));
 
-    // 4. Update Cobranzas view cached metrics (advancing cuotas, next quota, and next due date)
+    // 5. Update Cobranzas view cached metrics (advancing cuotas, next quota, and next due date)
     this.updateCobranzaPayment(pagoData.codigo_contrato, Number(pagoData.monto), pagoData.fecha_pago);
 
     return {
       success: true,
       pago: newPago
     };
+  }
+
+  // Delete payment from Supabase and revert contract quota/balance
+  async eliminarPago(pagoId: number | string): Promise<{ success: boolean; error?: string }> {
+    try {
+      // 1. Fetch payment details before deletion (from Supabase or local cache)
+      let pago: any = null;
+      const { data: dbPago, error: fetchError } = await supabase
+        .from('pagos')
+        .select('*')
+        .eq('id', pagoId)
+        .maybeSingle();
+
+      if (dbPago) {
+        pago = dbPago;
+      } else {
+        const localPagos = this.getStoredPagos();
+        pago = localPagos.find(p => String(p.id) === String(pagoId));
+      }
+
+      if (!pago) {
+        return { success: false, error: 'No se encontró el registro de pago en la base de datos de Supabase.' };
+      }
+
+      const pagoMonto = Number(pago.monto || 0);
+
+      // 2. Resolve target contract from Supabase
+      let targetContrato: any = null;
+      if (pago.contrato_id) {
+        const numericId = Number(pago.contrato_id);
+        if (!isNaN(numericId)) {
+          const { data } = await supabase
+            .from('contratos')
+            .select('id, codigo_contrato, cuotas_pagadas_base, saldo_financiar, monto_cuota, estado')
+            .eq('id', numericId)
+            .maybeSingle();
+          targetContrato = data;
+        }
+      }
+
+      if (!targetContrato && pago.codigo_contrato) {
+        const { data } = await supabase
+          .from('contratos')
+          .select('id, codigo_contrato, cuotas_pagadas_base, saldo_financiar, monto_cuota, estado')
+          .eq('codigo_contrato', pago.codigo_contrato)
+          .maybeSingle();
+        targetContrato = data;
+      }
+
+      // If still not resolved, check local cache to map contract
+      if (!targetContrato) {
+        const localCobranzas = this.getCachedCobranzas();
+        const matchedCobranza = localCobranzas.find(
+          cb => String(cb.contrato_id) === String(pago.contrato_id) || cb.codigo_contrato === pago.codigo_contrato
+        );
+        if (matchedCobranza) {
+          const { data } = await supabase
+            .from('contratos')
+            .select('id, codigo_contrato, cuotas_pagadas_base, saldo_financiar, monto_cuota, estado')
+            .eq('id', matchedCobranza.contrato_id)
+            .maybeSingle();
+          targetContrato = data;
+        }
+      }
+
+      // 3. Revert cuotas_pagadas_base and restore saldo_financiar in Supabase table 'contratos'
+      if (targetContrato) {
+        const currentCuotas = Number(targetContrato.cuotas_pagadas_base || 0);
+        const montoCuota = Number(targetContrato.monto_cuota) || 1;
+        const cuotasARestar = Math.max(1, Math.round(pagoMonto / montoCuota));
+        const revertedCuotas = Math.max(0, currentCuotas - cuotasARestar);
+        const restoredSaldo = Number(targetContrato.saldo_financiar || 0) + pagoMonto;
+        const revertedEstado = restoredSaldo > 0 && targetContrato.estado === 'LIQUIDADO' ? 'ACTIVO' : targetContrato.estado;
+
+        const { error: updateError } = await supabase
+          .from('contratos')
+          .update({
+            cuotas_pagadas_base: revertedCuotas,
+            saldo_financiar: restoredSaldo,
+            estado: revertedEstado
+          })
+          .eq('id', targetContrato.id);
+
+        if (updateError) {
+          console.error('Error al revertir cuotas en tabla contratos al eliminar pago:', updateError);
+        }
+      }
+
+      // 4. Delete row from 'pagos' table in Supabase
+      const { error: deleteError } = await supabase
+        .from('pagos')
+        .delete()
+        .eq('id', pagoId);
+
+      if (deleteError) {
+        console.error('Error al eliminar registro en tabla pagos:', deleteError);
+        return { success: false, error: deleteError.message };
+      }
+
+      // 5. Update local cache for pagos
+      const currentPagos = this.getStoredPagos();
+      const updatedPagos = currentPagos.filter(p => String(p.id) !== String(pagoId));
+      localStorage.setItem(STORAGE_KEYS.PAGOS, JSON.stringify(updatedPagos));
+
+      // 6. Immediately revert local cobranzas cache & clear local overrides
+      this.revertCobranzaPayment(
+        targetContrato?.codigo_contrato || pago.codigo_contrato,
+        pagoMonto,
+        targetContrato?.id || pago.contrato_id
+      );
+
+      return { success: true };
+    } catch (err: any) {
+      console.error('Excepción al eliminar pago:', err);
+      return { success: false, error: err?.message || 'Error de conexión al eliminar el pago' };
+    }
+  }
+
+  // Fetch real payment transactions (ingresos) directly from Supabase table 'pagos'
+  async getPagos(contratosList?: Contrato[], cobranzasList?: ControlCobranza[]): Promise<{ data: Pago[]; error: string | null }> {
+    try {
+      const { data, error } = await supabase
+        .from('pagos')
+        .select('*')
+        .limit(5000)
+        .order('fecha_pago', { ascending: false });
+
+      if (error) {
+        console.error('Error querying table pagos:', error.message);
+        return { data: this.getStoredPagos(), error: error.message };
+      }
+
+      // Map contracts and cobranzas to enrich payments with contract codes and client names
+      const contractMap = new Map<number | string, Contrato>();
+      if (contratosList && contratosList.length > 0) {
+        contratosList.forEach(c => {
+          contractMap.set(c.id, c);
+          if (c.codigo_contrato) contractMap.set(c.codigo_contrato, c);
+        });
+      }
+
+      const cobranzaMap = new Map<number | string, ControlCobranza>();
+      if (cobranzasList && cobranzasList.length > 0) {
+        cobranzasList.forEach(cb => {
+          cobranzaMap.set(cb.contrato_id, cb);
+          if (cb.codigo_contrato) cobranzaMap.set(cb.codigo_contrato, cb);
+        });
+      }
+
+      const normalized: Pago[] = (data || []).map((p: any) => {
+        const ctr = p.contrato_id ? contractMap.get(p.contrato_id) : null;
+        const cb = p.contrato_id ? cobranzaMap.get(p.contrato_id) : null;
+
+        const titular = 
+          ctr?.cliente?.nombres_apellidos || 
+          (ctr as any)?.clientes?.nombres_apellidos || 
+          cb?.propietario;
+
+        const codigo = 
+          ctr?.codigo_contrato || 
+          cb?.codigo_contrato || 
+          (p.contrato_id ? `CTR-${String(p.contrato_id).padStart(4, '0')}` : 'S/A');
+        
+        return {
+          id: p.id,
+          contrato_id: p.contrato_id,
+          tipo_pago: p.tipo_pago || 'CUOTAS MENSUALES',
+          monto: Number(p.monto || 0),
+          numero_operacion: p.numero_operacion || `OP-${p.id}`,
+          metodo_pago: (p.metodo_pago || 'BCP') as MetodoPago,
+          fecha_pago: p.fecha_pago || '',
+          codigo_contrato: codigo,
+          propietario: titular || (p.contrato_id ? `Contrato #${p.contrato_id}` : 'Ingreso Directo')
+        };
+      });
+
+      localStorage.setItem(STORAGE_KEYS.PAGOS, JSON.stringify(normalized));
+      return { data: normalized, error: null };
+    } catch (err: any) {
+      console.error('Connection error querying pagos:', err);
+      return { data: this.getStoredPagos(), error: err?.message || 'Error de conexión con la tabla pagos en Supabase' };
+    }
+  }
+
+  // Fetch real clients directly from Supabase table 'clientes'
+  async getClientes(): Promise<{ data: Cliente[]; error: string | null }> {
+    try {
+      const { data, error } = await supabase
+        .from('clientes')
+        .select('*')
+        .order('id', { ascending: true });
+
+      if (error) {
+        console.error('Error querying table clientes:', error.message);
+        return { data: this.getStoredClientes(), error: error.message };
+      }
+
+      const normalized: Cliente[] = (data || []).map((c: any) => ({
+        id: c.id,
+        dni: c.dni,
+        nombres_apellidos: c.nombres_apellidos,
+        telefono: c.telefono || '',
+        correo: c.correo || '',
+        direccion: c.direccion || '',
+        distrito: c.distrito || 'Ica',
+        provincia: c.provincia || 'Ica',
+        departamento: c.departamento || 'Ica'
+      }));
+
+      localStorage.setItem(STORAGE_KEYS.CLIENTES, JSON.stringify(normalized));
+      return { data: normalized, error: null };
+    } catch (err: any) {
+      console.error('Connection error querying clientes:', err);
+      return { data: this.getStoredClientes(), error: err?.message || 'Error de conexión con clientes' };
+    }
+  }
+
+  // Fetch real lots directly from Supabase table 'lotes'
+  async getLotes(): Promise<{ data: Lote[]; error: string | null }> {
+    try {
+      const { data, error } = await supabase
+        .from('lotes')
+        .select('*')
+        .order('id', { ascending: true });
+
+      if (error) {
+        console.error('Error querying table lotes:', error.message);
+        return { data: this.getStoredLotes(), error: error.message };
+      }
+
+      const normalized: Lote[] = (data || []).map((l: any) => ({
+        id: l.id,
+        etapa: Number(l.etapa || 1),
+        manzana: l.manzana,
+        numero_lote: String(l.numero_lote),
+        area_m2: Number(l.area_m2 || 0),
+        precio_lista: Number(l.precio_lista || 0),
+        estado: l.estado || 'DISPONIBLE'
+      }));
+
+      localStorage.setItem(STORAGE_KEYS.LOTES, JSON.stringify(normalized));
+      return { data: normalized, error: null };
+    } catch (err: any) {
+      console.error('Connection error querying lotes:', err);
+      return { data: this.getStoredLotes(), error: err?.message || 'Error de conexión con lotes' };
+    }
   }
 
   // Fetch real contracts directly from Supabase table 'contratos'
@@ -476,13 +808,17 @@ class SupabaseService {
           monto_cuota,
           cuotas_pagadas_base,
           fecha_primer_pago,
+          fecha_ultimo_pago,
           estado,
-          clientes ( dni, nombres_apellidos, telefono ),
-          lotes ( etapa, manzana, numero_lote, area_m2 )
+          cliente_id,
+          lote_id,
+          clientes!contratos_cliente_id_fkey ( id, dni, nombres_apellidos, telefono, correo, direccion, distrito ),
+          lotes!contratos_lote_id_fkey ( id, etapa, manzana, numero_lote, area_m2, precio_lista, estado )
         `)
         .order('id', { ascending: true });
 
-      if (error && error.code === 'PGRST201') {
+      if (error) {
+        // Fallback in case constraint name differs
         const retry = await supabase
           .from('contratos')
           .select(`
@@ -498,12 +834,15 @@ class SupabaseService {
             monto_cuota,
             cuotas_pagadas_base,
             fecha_primer_pago,
+            fecha_ultimo_pago,
             estado,
-            clientes!contratos_cliente_id_fkey ( dni, nombres_apellidos, telefono ),
-            lotes!contratos_lote_id_fkey ( etapa, manzana, numero_lote, area_m2 )
+            cliente_id,
+            lote_id,
+            clientes ( id, dni, nombres_apellidos, telefono ),
+            lotes ( id, etapa, manzana, numero_lote, area_m2 )
           `)
           .order('id', { ascending: true });
-        data = retry.data;
+        data = retry.data as any;
         error = retry.error;
       }
 
@@ -750,6 +1089,50 @@ class SupabaseService {
         return {
           ...c,
           ...overrideData
+        };
+      }
+      return c;
+    });
+
+    localStorage.setItem(STORAGE_KEYS.COBRANZAS, JSON.stringify(updated));
+  }
+
+  private revertCobranzaPayment(codigoContrato?: string, montoAbonado?: number, contratoId?: number | string) {
+    if (!montoAbonado) return;
+
+    // Remove any local override for this contract
+    if (codigoContrato) {
+      const storedOverrides = localStorage.getItem(STORAGE_KEYS.OVERRIDES);
+      if (storedOverrides) {
+        try {
+          const overrides = JSON.parse(storedOverrides);
+          delete overrides[codigoContrato];
+          localStorage.setItem(STORAGE_KEYS.OVERRIDES, JSON.stringify(overrides));
+        } catch {}
+      }
+    }
+
+    const currentCobranzas = this.getCachedCobranzas();
+    const updated = currentCobranzas.map(c => {
+      const match = (codigoContrato && c.codigo_contrato === codigoContrato) ||
+                    (contratoId && String(c.contrato_id) === String(contratoId));
+      if (match) {
+        const montoCuota = Number(c.monto_cuota) || 1;
+        const cuotasARestar = Math.max(1, Math.round(montoAbonado / montoCuota));
+        const nuevasPagadas = Math.max(0, Number(c.cuotas_pagadas) - cuotasARestar);
+        const nuevasPendientes = Math.min(Number(c.total_cuotas || 60), Number(c.cuotas_pendientes) + cuotasARestar);
+        const nuevoSaldo = Number(c.saldo_restante) + montoAbonado;
+        const proximaCuota = nuevasPagadas + 1;
+        const nuevoEstadoCobranza: EstadoCobranza = nuevoSaldo === 0 ? 'LIQUIDADO' : 'AL DIA';
+
+        return {
+          ...c,
+          cuotas_pagadas: nuevasPagadas,
+          cuotas_pendientes: nuevasPendientes,
+          saldo_restante: nuevoSaldo,
+          proximo_numero_cuota: proximaCuota,
+          estado_cobranza: nuevoEstadoCobranza,
+          estado: nuevoSaldo === 0 ? 'LIQUIDADO' : 'ACTIVO'
         };
       }
       return c;

@@ -192,15 +192,7 @@ interface ThemeContextType {
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
 export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [theme, setThemeState] = useState<ThemeMode>(() => {
-    try {
-      const saved = localStorage.getItem(MODE_STORAGE_KEY);
-      if (saved === 'light' || saved === 'dark') return saved;
-    } catch (e) {
-      console.warn('Error reading theme mode:', e);
-    }
-    return 'light';
-  });
+  const [theme] = useState<ThemeMode>('light');
 
   const [colorThemeId, setColorThemeState] = useState<string>(() => {
     try {
@@ -216,22 +208,17 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const activeColorTheme = COLOR_THEMES.find(t => t.id === colorThemeId) || COLOR_THEMES[0];
 
-  // Apply dark/light class
+  // Enforce light mode always
   useEffect(() => {
     const root = document.documentElement;
-    if (theme === 'dark') {
-      root.classList.add('dark');
-      root.classList.remove('light');
-    } else {
-      root.classList.remove('dark');
-      root.classList.add('light');
-    }
+    root.classList.remove('dark');
+    root.classList.add('light');
     try {
-      localStorage.setItem(MODE_STORAGE_KEY, theme);
+      localStorage.setItem(MODE_STORAGE_KEY, 'light');
     } catch (e) {
       console.warn(e);
     }
-  }, [theme]);
+  }, []);
 
   // Apply CSS color variables dynamically on root
   useEffect(() => {
@@ -249,11 +236,11 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   }, [activeColorTheme]);
 
   const toggleTheme = () => {
-    setThemeState(prev => (prev === 'dark' ? 'light' : 'dark'));
+    // Light mode enforced
   };
 
-  const setTheme = (newTheme: ThemeMode) => {
-    setThemeState(newTheme);
+  const setTheme = (_newTheme: ThemeMode) => {
+    // Light mode enforced
   };
 
   const setColorThemeId = (id: string) => {
@@ -265,10 +252,10 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   return (
     <ThemeContext.Provider
       value={{
-        theme,
+        theme: 'light',
         toggleTheme,
         setTheme,
-        isDark: theme === 'dark',
+        isDark: false,
         colorThemeId,
         activeColorTheme,
         setColorThemeId,

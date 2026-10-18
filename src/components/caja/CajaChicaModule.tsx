@@ -1,13 +1,15 @@
 import React, { useState, useMemo } from 'react';
 import { useData } from '../../context/DataContext';
-import { TipoEgreso } from '../../types/database';
+import { TipoEgreso, MetodoPago, Pago } from '../../types/database';
+import { VoucherModal } from '../common/VoucherModal';
 import { toast } from 'sonner';
 import { 
   Wallet, 
   Plus, 
   Receipt, 
-  PieChart, 
+  PieChart as PieIcon, 
   TrendingDown, 
+  TrendingUp,
   X, 
   Check, 
   RefreshCw, 
@@ -19,8 +21,32 @@ import {
   Info,
   Search,
   Filter,
-  ChevronDown
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  Eye,
+  CheckCircle2,
+  Building,
+  Smartphone,
+  BarChart3,
+  ArrowUpRight,
+  ArrowDownRight,
+  ShieldCheck,
+  Trash2,
+  AlertTriangle
 } from 'lucide-react';
+import {
+  ResponsiveContainer,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend
+} from 'recharts';
+
+type CajaSubTab = 'flujo' | 'ingresos' | 'egresos';
 
 // Format 'YYYY-MM' as 'Mes Año' (e.g. '2026-10' -> 'Octubre 2026')
 const formatMonthLabel = (yearMonth: string) => {
@@ -129,13 +155,43 @@ const CATEGORIAS_VARIABLES: CategoryOption[] = [
 ];
 
 export const CajaChicaModule: React.FC = () => {
-  const { egresos, loadingEgresos, egresosError, refreshEgresos, registrarEgreso } = useData();
+  const { 
+    egresos, 
+    loadingEgresos, 
+    egresosError, 
+    refreshEgresos, 
+    registrarEgreso,
+    pagos,
+    loadingPagos,
+    refreshPagos,
+    eliminarPago
+  } = useData();
 
-  // Filters
+  // Active Sub-Tab
+  const [activeSubTab, setActiveSubTab] = useState<CajaSubTab>('ingresos');
+
+  // Active voucher modal
+  const [selectedVoucher, setSelectedVoucher] = useState<Pago | null>(null);
+
+  // Deletion modal state for Pagos (Ingresos)
+  const [pagoToDelete, setPagoToDelete] = useState<Pago | null>(null);
+  const [isDeletingPago, setIsDeletingPago] = useState<boolean>(false);
+
+  // Month selector for Flujo & Ingresos & Egresos
   const [selectedMonth, setSelectedMonth] = useState<string>('ALL');
+
+  // Ingresos Filters
+  const [ingresosSearch, setIngresosSearch] = useState<string>('');
+  const [ingresosMethod, setIngresosMethod] = useState<string>('ALL');
+  const [ingresosPage, setIngresosPage] = useState<number>(1);
+  const ingresosPageSize = 15;
+
+  // Egresos Filters
   const [searchDescription, setSearchDescription] = useState<string>('');
   const [selectedCategoria, setSelectedCategoria] = useState<string>('ALL');
   const [selectedTipo, setSelectedTipo] = useState<string>('ALL');
+  const [egresosPage, setEgresosPage] = useState<number>(1);
+  const egresosPageSize = 15;
 
   // Add Egreso Modal Form State
   const [showAddModal, setShowAddModal] = useState<boolean>(false);
@@ -148,19 +204,134 @@ export const CajaChicaModule: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  // Cascading categories list based on current tipo
+  // 1. Available Months combined from both Pagos and Egresos
+  const availableMonths = useMemo(() => {
+    const map = new Map<string, { pagosCount: number; pagosTotal: number; egresosCount: number; egresosTotal: number }>();
+
+    pagos.forEach(p => {
+      if (p.fecha_pago) {
+        const ym = p.fecha_pago.slice(0, 7);
+        if (ym.length === 7) {
+          const cur = map.get(ym) || { pagosCount: 0, pagosTotal: 0, egresosCount: 0, egresosTotal: 0 };
+          cur.pagosCount += 1;
+          cur.pagosTotal += Number(p.monto || 0);
+          map.set(ym, cur);
+        }
+      }
+    });
+
+    egresos.forEach(e => {
+      if (e.fecha) {
+        const ym = e.fecha.slice(0, 7);
+        if (ym.length === 7) {
+          const cur = map.get(ym) || { pagosCount: 0, pagosTotal: 0, egresosCount: 0, egresosTotal: 0 };
+          cur.egresosCount += 1;
+          cur.egresosTotal += Number(e.monto || 0);
+          map.set(ym, cur);
+        }
+      }
+    });
+
+    return Array.from(map.entries())
+      .sort((a, b) => b[0].localeCompare(a[0]))
+      .map(([ym, data]) => ({
+        value: ym,
+        label: formatMonthLabel(ym),
+        pagosCount: data.pagosCount,
+        pagosTotal: data.pagosTotal,
+        egresosCount: data.egresosCount,
+        egresosTotal: data.egresosTotal
+      }));
+  }, [pagos, egresos]);
+
+  // 2. Monthly Comparative Cashflow Chart Data
+  const comparativeChartData = useMemo(() => {
+    // Return all months in chronological ascending order
+    return [...availableMonths].reverse().map(m => {
+      const [year, month] = m.value.split('-');
+      const monthNames = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Set', 'Oct', 'Nov', 'Dic'];
+      const mIdx = parseInt(month, 10) - 1;
+      const shortLabel = `${monthNames[mIdx] || month} ${year.slice(-2)}`;
+
+      return {
+        ym: m.value,
+        mes: shortLabel,
+        mesFull: m.label,
+        ingresos: Math.round(m.pagosTotal),
+        egresos: Math.round(m.egresosTotal),
+        balance: Math.round(m.pagosTotal - m.egresosTotal)
+      };
+    });
+  }, [availableMonths]);
+
+  // 3. Filtered Pagos (Ingresos)
+  const filteredPagos = useMemo(() => {
+    return pagos.filter(p => {
+      // Month
+      if (selectedMonth !== 'ALL') {
+        const ym = (p.fecha_pago || '').slice(0, 7);
+        if (ym !== selectedMonth) return false;
+      }
+
+      // Method
+      if (ingresosMethod !== 'ALL' && p.metodo_pago !== ingresosMethod) {
+        return false;
+      }
+
+      // Search
+      if (ingresosSearch.trim()) {
+        const q = ingresosSearch.toLowerCase().trim();
+        const op = (p.numero_operacion || '').toLowerCase();
+        const prop = (p.propietario || '').toLowerCase();
+        const ctr = (p.codigo_contrato || '').toLowerCase();
+        const tipoP = (p.tipo_pago || '').toLowerCase();
+
+        if (!op.includes(q) && !prop.includes(q) && !ctr.includes(q) && !tipoP.includes(q)) {
+          return false;
+        }
+      }
+
+      return true;
+    }).sort((a, b) => {
+      const cmp = (b.fecha_pago || '').localeCompare(a.fecha_pago || '');
+      if (cmp !== 0) return cmp;
+      return Number(b.id || 0) - Number(a.id || 0);
+    });
+  }, [pagos, selectedMonth, ingresosMethod, ingresosSearch]);
+
+  const ingresosTotalPages = Math.ceil(filteredPagos.length / ingresosPageSize) || 1;
+  const paginatedPagos = useMemo(() => {
+    const start = (ingresosPage - 1) * ingresosPageSize;
+    return filteredPagos.slice(start, start + ingresosPageSize);
+  }, [filteredPagos, ingresosPage]);
+
+  // Ingresos Summary for active month/filter
+  const ingresosSummary = useMemo(() => {
+    const list = selectedMonth === 'ALL' ? pagos : pagos.filter(p => (p.fecha_pago || '').slice(0, 7) === selectedMonth);
+    const total = list.reduce((sum, p) => sum + Number(p.monto || 0), 0);
+    const count = list.length;
+
+    // Methods
+    const byMethod: Record<string, number> = {};
+    list.forEach(p => {
+      const m = p.metodo_pago || 'OTROS';
+      byMethod[m] = (byMethod[m] || 0) + Number(p.monto || 0);
+    });
+
+    return { total, count, byMethod };
+  }, [pagos, selectedMonth]);
+
+  // 4. Egresos logic
   const activeCategories = useMemo(() => {
     return tipo === 'FIJO' ? CATEGORIAS_FIJAS : CATEGORIAS_VARIABLES;
   }, [tipo]);
 
-  // Selected category definition to show hint
   const currentCategoryDef = useMemo(() => {
     return activeCategories.find(c => c.id === categoria);
   }, [activeCategories, categoria]);
 
   const isOtherCategory = categoria === 'OTRA CATEGORÍA FIJA' || categoria === 'OTRA CATEGORÍA VARIABLE';
 
-  // Handler for switching tipo: automatically resets category to first item in new list
   const handleTipoChange = (newTipo: TipoEgreso) => {
     setTipo(newTipo);
     const newCategoryList = newTipo === 'FIJO' ? CATEGORIAS_FIJAS : CATEGORIAS_VARIABLES;
@@ -180,45 +351,17 @@ export const CajaChicaModule: React.FC = () => {
     setShowAddModal(true);
   };
 
-  // Distinct months present in egresos sorted descending (newest first)
-  const availableMonths = useMemo(() => {
-    const map = new Map<string, { count: number; total: number }>();
-    egresos.forEach((e) => {
-      if (e.fecha) {
-        const ym = e.fecha.slice(0, 7);
-        if (ym.length === 7) {
-          const current = map.get(ym) || { count: 0, total: 0 };
-          current.count += 1;
-          current.total += Number(e.monto || 0);
-          map.set(ym, current);
-        }
-      }
-    });
-
-    return Array.from(map.entries())
-      .sort((a, b) => b[0].localeCompare(a[0]))
-      .map(([ym, data]) => ({
-        value: ym,
-        label: formatMonthLabel(ym),
-        count: data.count,
-        total: data.total
-      }));
-  }, [egresos]);
-
-  // Egresos scoped to the selected month (or all if 'ALL')
   const monthScopedEgresos = useMemo(() => {
     if (selectedMonth === 'ALL') return egresos;
     return egresos.filter(e => (e.fecha || '').slice(0, 7) === selectedMonth);
   }, [egresos, selectedMonth]);
 
-  // Financial summary calculated strictly from month-scoped real Supabase records
-  const summary = useMemo(() => {
+  const egresosSummary = useMemo(() => {
     const list = monthScopedEgresos;
     const total = list.reduce((sum, e) => sum + Number(e.monto || 0), 0);
     const fijos = list.filter(e => e.tipo === 'FIJO').reduce((sum, e) => sum + Number(e.monto || 0), 0);
     const variables = list.filter(e => e.tipo === 'VARIABLE').reduce((sum, e) => sum + Number(e.monto || 0), 0);
 
-    // Group by category
     const categoryMap = new Map<string, number>();
     list.forEach((e) => {
       const cat = (e.categoria || 'OTROS').toUpperCase().trim();
@@ -234,37 +377,23 @@ export const CajaChicaModule: React.FC = () => {
     return { total, fijos, variables, categoriesBreakdown, count: list.length };
   }, [monthScopedEgresos]);
 
-  // Extract unique categories present in the real records for filter dropdown
-  const existingCategories = useMemo(() => {
-    const set = new Set<string>();
-    egresos.forEach(e => {
-      if (e.categoria) set.add(e.categoria.toUpperCase().trim());
-    });
-    return Array.from(set).sort();
-  }, [egresos]);
-
-  // Filtered egresos applying Month, Description Search, Category, and Tipo
   const filteredEgresos = useMemo(() => {
     return egresos.filter((e) => {
-      // 1. Month filter
       if (selectedMonth !== 'ALL') {
         const ym = (e.fecha || '').slice(0, 7);
         if (ym !== selectedMonth) return false;
       }
 
-      // 2. Description search
       if (searchDescription.trim()) {
         const query = searchDescription.toLowerCase().trim();
         const desc = (e.descripcion || '').toLowerCase();
         if (!desc.includes(query)) return false;
       }
 
-      // 3. Category filter
       if (selectedCategoria !== 'ALL' && (e.categoria || '').toUpperCase().trim() !== selectedCategoria) {
         return false;
       }
 
-      // 4. Tipo filter
       if (selectedTipo !== 'ALL' && e.tipo !== selectedTipo) {
         return false;
       }
@@ -273,21 +402,22 @@ export const CajaChicaModule: React.FC = () => {
     });
   }, [egresos, selectedMonth, searchDescription, selectedCategoria, selectedTipo]);
 
-  // Total visible filtered amount
-  const filteredTotal = useMemo(() => {
-    return filteredEgresos.reduce((sum, e) => sum + Number(e.monto || 0), 0);
-  }, [filteredEgresos]);
+  const egresosTotalPages = Math.ceil(filteredEgresos.length / egresosPageSize) || 1;
+  const paginatedEgresos = useMemo(() => {
+    const start = (egresosPage - 1) * egresosPageSize;
+    return filteredEgresos.slice(start, start + egresosPageSize);
+  }, [filteredEgresos, egresosPage]);
 
-  const hasActiveFilters = selectedMonth !== 'ALL' || searchDescription.trim() !== '' || selectedCategoria !== 'ALL' || selectedTipo !== 'ALL';
+  // Overall Financial Balance for the selected month
+  const balanceNeto = useMemo(() => {
+    const ing = ingresosSummary.total;
+    const egr = egresosSummary.total;
+    const neto = ing - egr;
+    const margen = ing > 0 ? Math.round((neto / ing) * 100) : 0;
+    return { ing, egr, neto, margen };
+  }, [ingresosSummary, egresosSummary]);
 
-  const handleClearFilters = () => {
-    setSelectedMonth('ALL');
-    setSearchDescription('');
-    setSelectedCategoria('ALL');
-    setSelectedTipo('ALL');
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmitEgreso = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg(null);
 
@@ -347,36 +477,108 @@ export const CajaChicaModule: React.FC = () => {
     }
   };
 
+  // Handler for confirming payment deletion and quota reversal
+  const handleConfirmDeletePago = async () => {
+    if (!pagoToDelete) return;
+    setIsDeletingPago(true);
+    try {
+      const res = await eliminarPago(pagoToDelete.id);
+      if (res.success) {
+        toast.success('Pago anulado exitosamente', {
+          description: `Se eliminó el pago de S/ ${Number(pagoToDelete.monto).toLocaleString('es-PE', { minimumFractionDigits: 2 })} y se actualizó la cuota en el contrato.`
+        });
+        setPagoToDelete(null);
+      } else {
+        toast.error('Error al anular pago', {
+          description: res.error || 'No se pudo anular el pago en Supabase.'
+        });
+      }
+    } catch (err: any) {
+      toast.error('Error', {
+        description: err?.message || 'Error inesperado al anular el pago.'
+      });
+    } finally {
+      setIsDeletingPago(false);
+    }
+  };
+
+  // Badge for payment methods
+  const renderMethodBadge = (metodo: MetodoPago | string) => {
+    switch (metodo) {
+      case 'YAPE':
+        return (
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-purple-50 text-purple-700 border border-purple-200">
+            <Smartphone className="w-3 h-3" />
+            YAPE
+          </span>
+        );
+      case 'BCP':
+        return (
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-blue-50 text-blue-700 border border-blue-200">
+            <Building className="w-3 h-3" />
+            BCP
+          </span>
+        );
+      case 'INTERBANK':
+        return (
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
+            <Building className="w-3 h-3" />
+            INTERBANK
+          </span>
+        );
+      case 'BANBIF':
+        return (
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-cyan-50 text-cyan-700 border border-cyan-200">
+            <Building className="w-3 h-3" />
+            BANBIF
+          </span>
+        );
+      case 'EFECTIVO':
+        return (
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-amber-50 text-amber-700 border border-amber-200">
+            <Wallet className="w-3 h-3" />
+            EFECTIVO
+          </span>
+        );
+      default:
+        return (
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-slate-50 text-slate-700 border border-slate-200">
+            {metodo}
+          </span>
+        );
+    }
+  };
+
   return (
     <div className="space-y-4">
-      {/* Header Banner */}
-      <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      {/* Module Header */}
+      <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2.5">
-            <h1 className="text-lg font-bold text-slate-900 tracking-tight">
-              Caja Chica &amp; Egresos
+            <h1 className="text-xl font-bold text-slate-900 tracking-tight">
+              Caja Chica &amp; Flujo de Fondos
             </h1>
-            <span className="px-2 py-0.5 rounded-md text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
-              Supabase table: <code className="font-mono">egresos</code>
+            <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+              {pagos.length} Ingresos • {egresos.length} Egresos
             </span>
           </div>
           <p className="text-xs text-slate-500 mt-1">
-            Gestión en tiempo real de gastos operativos, costos fijos y salidas de caja
+            Supervisión integral de recaudación por abonos, gastos operativos y balance neto de tesorería
           </p>
         </div>
 
+        {/* Global actions */}
         <div className="flex items-center gap-2">
-          {/* Refresh button */}
           <button
-            onClick={() => refreshEgresos()}
-            disabled={loadingEgresos}
-            title="Recargar egresos desde Supabase"
-            className="p-2 bg-white hover:bg-slate-50 border border-slate-200 text-slate-600 rounded-lg text-xs font-medium transition-colors shadow-xs cursor-pointer disabled:opacity-50"
+            onClick={() => { refreshPagos(); refreshEgresos(); }}
+            disabled={loadingPagos || loadingEgresos}
+            title="Recargar datos de Supabase"
+            className="p-2 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 rounded-lg text-xs font-medium transition-colors shadow-xs cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
           >
-            <RefreshCw className={`w-3.5 h-3.5 ${loadingEgresos ? 'animate-spin text-emerald-600' : ''}`} />
+            <RefreshCw className={`w-3.5 h-3.5 ${loadingPagos || loadingEgresos ? 'animate-spin text-emerald-600' : 'text-slate-500'}`} />
+            <span className="hidden sm:inline">Actualizar</span>
           </button>
 
-          {/* New Egreso button */}
           <button
             onClick={handleOpenModal}
             className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-medium text-xs rounded-lg shadow-xs transition-colors flex items-center gap-1.5 cursor-pointer"
@@ -387,464 +589,886 @@ export const CajaChicaModule: React.FC = () => {
         </div>
       </div>
 
-      {/* Supabase Error Alert Banner */}
-      {egresosError && (
-        <div className="bg-rose-50 border border-rose-200 rounded-xl p-4 flex items-start justify-between gap-3 text-rose-800 text-xs shadow-xs animate-fadeIn">
-          <div className="flex items-start gap-2.5">
-            <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
-            <div>
-              <p className="font-semibold text-rose-900">Error al consultar la tabla 'egresos' en Supabase</p>
-              <p className="text-[11px] text-rose-700 mt-0.5 font-mono">{egresosError}</p>
-            </div>
-          </div>
-          <button
-            onClick={() => refreshEgresos()}
-            className="px-2.5 py-1 bg-white hover:bg-rose-100 text-rose-700 font-medium rounded-md border border-rose-200 text-xs shrink-0 cursor-pointer transition-colors"
+      {/* Month Filter Selector Bar */}
+      <div className="bg-white border border-slate-200 rounded-xl p-3 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <Calendar className="w-4 h-4 text-emerald-600" />
+          <span className="text-xs font-semibold text-slate-700">Periodo Contable:</span>
+          <select
+            value={selectedMonth}
+            onChange={(e) => {
+              setSelectedMonth(e.target.value);
+              setIngresosPage(1);
+              setEgresosPage(1);
+            }}
+            className="px-3 py-1.5 bg-slate-50 hover:bg-white focus:bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-800 focus:outline-none focus:ring-1 focus:ring-emerald-500 cursor-pointer transition-colors"
           >
-            Reintentar
+            <option value="ALL">Todos los Meses (Consolidado Histórico)</option>
+            {availableMonths.map(m => (
+              <option key={m.value} value={m.value}>
+                {m.label} ({m.pagosCount} ingresos • {m.egresosCount} egresos)
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {selectedMonth !== 'ALL' && (
+          <button
+            onClick={() => { setSelectedMonth('ALL'); setIngresosPage(1); setEgresosPage(1); }}
+            className="text-xs text-emerald-600 hover:text-emerald-700 font-semibold cursor-pointer underline self-end sm:self-auto"
+          >
+            Ver consolidado anual
           </button>
-        </div>
-      )}
-
-      {/* Summary KPI Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        {/* Total Egresos */}
-        <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-medium text-slate-500">
-              {selectedMonth !== 'ALL' ? `Total Egresos (${formatMonthLabel(selectedMonth)})` : 'Total Egresos Reales'}
-            </span>
-            <div className="w-7 h-7 rounded-md bg-rose-50 text-rose-600 border border-rose-200 flex items-center justify-center">
-              <TrendingDown className="w-3.5 h-3.5" />
-            </div>
-          </div>
-          <div className="mt-2">
-            {loadingEgresos ? (
-              <div className="h-7 w-28 bg-slate-100 animate-pulse rounded my-1" />
-            ) : (
-              <span className="text-xl font-bold text-slate-900">
-                S/ {summary.total.toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-              </span>
-            )}
-            <p className="text-[11px] text-slate-400 mt-0.5">
-              {loadingEgresos 
-                ? 'Cargando registros...' 
-                : selectedMonth !== 'ALL'
-                  ? `${summary.count} movimientos en ${formatMonthLabel(selectedMonth)}`
-                  : `${egresos.length} movimientos históricos en Supabase`}
-            </p>
-          </div>
-        </div>
-
-        {/* Egresos Fijos */}
-        <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-medium text-slate-500">
-              {selectedMonth !== 'ALL' ? `Costos Fijos (${formatMonthLabel(selectedMonth)})` : 'Costos Fijos (Planilla / Local)'}
-            </span>
-            <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-slate-100 text-slate-600">
-              Fijo
-            </span>
-          </div>
-          <div className="mt-2">
-            {loadingEgresos ? (
-              <div className="h-7 w-24 bg-slate-100 animate-pulse rounded my-1" />
-            ) : (
-              <span className="text-xl font-bold text-slate-900">
-                S/ {summary.fijos.toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-              </span>
-            )}
-            <p className="text-[11px] text-slate-400 mt-0.5">
-              {summary.total > 0 ? Math.round((summary.fijos / summary.total) * 100) : 0}% del período
-            </p>
-          </div>
-        </div>
-
-        {/* Egresos Variables */}
-        <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-medium text-slate-500">
-              {selectedMonth !== 'ALL' ? `Gastos Variables (${formatMonthLabel(selectedMonth)})` : 'Gastos Variables (Marketing / Operaciones)'}
-            </span>
-            <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-50 text-amber-700 border border-amber-200">
-              Variable
-            </span>
-          </div>
-          <div className="mt-2">
-            {loadingEgresos ? (
-              <div className="h-7 w-24 bg-slate-100 animate-pulse rounded my-1" />
-            ) : (
-              <span className="text-xl font-bold text-slate-900">
-                S/ {summary.variables.toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-              </span>
-            )}
-            <p className="text-[11px] text-slate-400 mt-0.5">
-              {summary.total > 0 ? Math.round((summary.variables / summary.total) * 100) : 0}% del período
-            </p>
-          </div>
-        </div>
-      </div>
-
-      {/* Search and Filters Toolbar */}
-      <div className="bg-white border border-slate-200 rounded-xl p-3.5 shadow-xs space-y-2.5">
-        <div className="flex flex-col md:flex-row items-stretch md:items-center gap-2.5">
-          {/* Buscador de Descripción */}
-          <div className="relative flex-1 min-w-[240px]">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
-            <input
-              type="text"
-              value={searchDescription}
-              onChange={(e) => setSearchDescription(e.target.value)}
-              placeholder="Buscar por descripción o concepto (ej: luz, planilla, combustible, publicidad...)"
-              className="w-full pl-9 pr-8 py-2 bg-slate-50 hover:bg-white focus:bg-white border border-slate-200 rounded-lg text-slate-800 placeholder-slate-400 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500 transition-colors"
-            />
-            {searchDescription && (
-              <button
-                type="button"
-                onClick={() => setSearchDescription('')}
-                className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600 p-0.5 rounded cursor-pointer"
-                title="Borrar búsqueda"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            )}
-          </div>
-
-          {/* Filtro por Mes */}
-          <div className="relative min-w-[210px]">
-            <div className="absolute left-3 top-2.5 pointer-events-none text-slate-400">
-              <Calendar className="w-4 h-4" />
-            </div>
-            <select
-              value={selectedMonth}
-              onChange={(e) => setSelectedMonth(e.target.value)}
-              className="w-full pl-9 pr-7 py-2 bg-slate-50 hover:bg-white border border-slate-200 rounded-lg text-slate-700 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500 cursor-pointer appearance-none font-medium"
-            >
-              <option value="ALL">Todos los Meses ({availableMonths.length} períodos)</option>
-              {availableMonths.map((m) => (
-                <option key={m.value} value={m.value}>
-                  {m.label} ({m.count})
-                </option>
-              ))}
-            </select>
-            <ChevronDown className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-3 pointer-events-none" />
-          </div>
-
-          {/* Filtro por Tipo */}
-          <div className="min-w-[130px]">
-            <select
-              value={selectedTipo}
-              onChange={(e) => setSelectedTipo(e.target.value)}
-              className="w-full px-3 py-2 bg-slate-50 hover:bg-white border border-slate-200 rounded-lg text-slate-700 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500 cursor-pointer font-medium"
-            >
-              <option value="ALL">Todos los Tipos</option>
-              <option value="FIJO">Fijos</option>
-              <option value="VARIABLE">Variables</option>
-            </select>
-          </div>
-
-          {/* Filtro por Categoría */}
-          <div className="min-w-[170px]">
-            <select
-              value={selectedCategoria}
-              onChange={(e) => setSelectedCategoria(e.target.value)}
-              className="w-full px-3 py-2 bg-slate-50 hover:bg-white border border-slate-200 rounded-lg text-slate-700 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500 cursor-pointer font-medium truncate"
-            >
-              <option value="ALL">Todas las Categorías</option>
-              {existingCategories.map((c) => (
-                <option key={c} value={c}>{c}</option>
-              ))}
-            </select>
-          </div>
-
-          {/* Botón Limpiar Filtros */}
-          {hasActiveFilters && (
-            <button
-              onClick={handleClearFilters}
-              className="px-3 py-2 text-xs text-rose-600 hover:text-rose-700 hover:bg-rose-50 border border-rose-200 rounded-lg flex items-center justify-center gap-1.5 transition-colors cursor-pointer shrink-0 font-medium"
-              title="Restablecer todos los filtros"
-            >
-              <X className="w-3.5 h-3.5" />
-              <span>Limpiar filtros</span>
-            </button>
-          )}
-        </div>
-
-        {/* Active Filters Summary Chips Bar */}
-        {hasActiveFilters && (
-          <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-100 text-[11px] text-slate-500">
-            <span className="font-medium text-slate-600 flex items-center gap-1">
-              <Filter className="w-3 h-3 text-emerald-600" /> Filtros activos:
-            </span>
-
-            {selectedMonth !== 'ALL' && (
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 font-medium">
-                Mes: {formatMonthLabel(selectedMonth)}
-                <button onClick={() => setSelectedMonth('ALL')} className="hover:text-emerald-900 cursor-pointer ml-0.5">
-                  <X className="w-3 h-3" />
-                </button>
-              </span>
-            )}
-
-            {searchDescription.trim() && (
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-50 text-amber-800 border border-amber-200 font-medium">
-                Descripción: "{searchDescription.trim()}"
-                <button onClick={() => setSearchDescription('')} className="hover:text-amber-950 cursor-pointer ml-0.5">
-                  <X className="w-3 h-3" />
-                </button>
-              </span>
-            )}
-
-            {selectedTipo !== 'ALL' && (
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 border border-slate-200 font-medium">
-                Tipo: {selectedTipo}
-                <button onClick={() => setSelectedTipo('ALL')} className="hover:text-slate-900 cursor-pointer ml-0.5">
-                  <X className="w-3 h-3" />
-                </button>
-              </span>
-            )}
-
-            {selectedCategoria !== 'ALL' && (
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 border border-slate-200 font-medium">
-                Categoría: {selectedCategoria}
-                <button onClick={() => setSelectedCategoria('ALL')} className="hover:text-slate-900 cursor-pointer ml-0.5">
-                  <X className="w-3 h-3" />
-                </button>
-              </span>
-            )}
-
-            <span className="text-slate-400 ml-auto font-mono text-[10px]">
-              {filteredEgresos.length} {filteredEgresos.length === 1 ? 'movimiento' : 'movimientos'} (Total visible: S/ {filteredTotal.toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})
-            </span>
-          </div>
         )}
       </div>
 
-      {/* Category Breakdown & Table Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        {/* Category Breakdown List */}
-        <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs space-y-3">
-          <div className="flex items-center justify-between pb-2.5 border-b border-slate-100">
-            <div className="flex items-center gap-2">
-              <PieChart className="w-4 h-4 text-slate-500" />
-              <h3 className="font-semibold text-slate-800 text-xs">Distribución por Categoría</h3>
-            </div>
-            {selectedMonth !== 'ALL' && (
-              <span className="text-[10px] font-medium text-emerald-700 bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-200">
-                {formatMonthLabel(selectedMonth)}
-              </span>
-            )}
-          </div>
+      {/* Sub-Tabs Switcher */}
+      <div className="flex items-center border-b border-slate-200 gap-2">
+        <button
+          onClick={() => setActiveSubTab('flujo')}
+          className={`px-4 py-2 text-xs font-semibold rounded-t-lg transition-all cursor-pointer flex items-center gap-2 border-b-2 ${
+            activeSubTab === 'flujo'
+              ? 'border-emerald-600 text-emerald-700 bg-emerald-50/50'
+              : 'border-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+          }`}
+        >
+          <BarChart3 className="w-4 h-4" />
+          <span>Flujo de Fondos (Balance Neto)</span>
+        </button>
 
-          {loadingEgresos ? (
-            <div className="space-y-3 py-2">
-              {[1, 2, 3].map(i => (
-                <div key={i} className="space-y-1.5 animate-pulse">
-                  <div className="h-3.5 bg-slate-100 rounded w-3/4" />
-                  <div className="h-1.5 bg-slate-100 rounded w-full" />
-                </div>
-              ))}
-            </div>
-          ) : summary.categoriesBreakdown.length === 0 ? (
-            <div className="py-8 text-center text-slate-400">
-              <PieChart className="w-6 h-6 mx-auto mb-1.5 opacity-40" />
-              <p className="text-xs font-medium text-slate-600">Sin datos de categorías</p>
-              <p className="text-[11px] text-slate-400 mt-0.5">
-                {selectedMonth !== 'ALL' 
-                  ? `No hay egresos registrados en ${formatMonthLabel(selectedMonth)}.` 
-                  : 'No hay egresos registrados para calcular porcentajes.'}
-              </p>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {summary.categoriesBreakdown.map((cat, idx) => (
-                <div key={idx} className="space-y-1">
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="text-slate-700 truncate max-w-[170px]" title={cat.categoria}>
-                      {cat.categoria}
-                    </span>
-                    <div className="flex items-center gap-1.5 shrink-0">
-                      <span className="font-medium text-slate-900">
-                        S/ {cat.monto.toLocaleString('es-PE', { minimumFractionDigits: 2 })}
-                      </span>
-                      <span className="text-slate-400 text-[10px]">({cat.porcentaje}%)</span>
-                    </div>
-                  </div>
-                  <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
-                    <div
-                      className="h-full rounded-full bg-emerald-500 transition-all duration-300"
-                      style={{ width: `${cat.porcentaje}%` }}
-                    />
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+        <button
+          onClick={() => setActiveSubTab('ingresos')}
+          className={`px-4 py-2 text-xs font-semibold rounded-t-lg transition-all cursor-pointer flex items-center gap-2 border-b-2 ${
+            activeSubTab === 'ingresos'
+              ? 'border-emerald-600 text-emerald-700 bg-emerald-50/50'
+              : 'border-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+          }`}
+        >
+          <ArrowUpRight className="w-4 h-4 text-emerald-600" />
+          <span>Ingresos &amp; Recaudación ({filteredPagos.length} pagos)</span>
+        </button>
 
-        {/* Expenses Table */}
-        <div className="lg:col-span-2 bg-white border border-slate-200 rounded-xl overflow-hidden shadow-xs flex flex-col">
-          <div className="p-3.5 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
-            <div className="flex items-center gap-2">
-              <Receipt className="w-4 h-4 text-slate-500" />
-              <h3 className="font-semibold text-slate-800 text-xs">Registros de la Tabla 'egresos'</h3>
-              <span className="px-1.5 py-0.2 rounded text-[10px] bg-slate-100 text-slate-600 font-medium font-mono">
-                {filteredEgresos.length} de {egresos.length}
-              </span>
-            </div>
-
-            <div className="flex items-center gap-2 text-xs">
-              <span className="text-slate-500 text-[11px]">Suma visible:</span>
-              <span className="font-bold text-slate-900 font-mono bg-slate-50 px-2 py-0.5 rounded border border-slate-200">
-                S/ {filteredTotal.toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-              </span>
-            </div>
-          </div>
-
-          <div className="overflow-x-auto flex-1">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-slate-50 text-slate-500 uppercase text-[11px] font-medium border-b border-slate-200 tracking-wider">
-                <tr>
-                  <th className="px-3.5 py-2.5">ID</th>
-                  <th className="px-3.5 py-2.5">Fecha</th>
-                  <th className="px-3.5 py-2.5">Tipo</th>
-                  <th className="px-3.5 py-2.5">Categoría</th>
-                  <th className="px-3.5 py-2.5">Descripción</th>
-                  <th className="px-3.5 py-2.5 text-right">Monto</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 text-slate-700">
-                {loadingEgresos ? (
-                  Array.from({ length: 4 }).map((_, i) => (
-                    <tr key={i} className="animate-pulse">
-                      <td className="px-3.5 py-3"><div className="h-3.5 bg-slate-100 rounded w-8" /></td>
-                      <td className="px-3.5 py-3"><div className="h-3.5 bg-slate-100 rounded w-20" /></td>
-                      <td className="px-3.5 py-3"><div className="h-3.5 bg-slate-100 rounded w-16" /></td>
-                      <td className="px-3.5 py-3"><div className="h-3.5 bg-slate-100 rounded w-28" /></td>
-                      <td className="px-3.5 py-3"><div className="h-3.5 bg-slate-100 rounded w-48" /></td>
-                      <td className="px-3.5 py-3"><div className="h-3.5 bg-slate-100 rounded w-16 ml-auto" /></td>
-                    </tr>
-                  ))
-                ) : filteredEgresos.length === 0 ? (
-                  <tr>
-                    <td colSpan={6} className="px-4 py-12 text-center text-slate-400">
-                      <div className="w-10 h-10 rounded-full bg-slate-50 border border-slate-200 flex items-center justify-center mx-auto mb-2 text-slate-400">
-                        <Wallet className="w-5 h-5" />
-                      </div>
-                      <p className="text-xs font-semibold text-slate-700">
-                        {egresos.length === 0 
-                          ? 'No hay egresos registrados en Supabase' 
-                          : searchDescription.trim() 
-                            ? `No se encontraron egresos con la descripción "${searchDescription.trim()}"`
-                            : selectedMonth !== 'ALL'
-                              ? `No hay egresos registrados en ${formatMonthLabel(selectedMonth)}`
-                              : 'No se encontraron egresos con los filtros seleccionados'}
-                      </p>
-                      <p className="text-[11px] text-slate-500 mt-0.5">
-                        {egresos.length === 0
-                          ? 'La tabla "egresos" se encuentra vacía. Puede añadir un nuevo movimiento usando el botón superior.'
-                          : 'Pruebe restableciendo la búsqueda de descripción o los filtros aplicados.'}
-                      </p>
-                      {hasActiveFilters && (
-                        <button
-                          onClick={handleClearFilters}
-                          className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-medium transition-colors cursor-pointer"
-                        >
-                          <X className="w-3.5 h-3.5" />
-                          <span>Restablecer filtros</span>
-                        </button>
-                      )}
-                      {egresos.length === 0 && (
-                        <button
-                          onClick={handleOpenModal}
-                          className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-medium transition-colors shadow-xs cursor-pointer"
-                        >
-                          <Plus className="w-3.5 h-3.5" />
-                          <span>Registrar primer egreso</span>
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                ) : (
-                  filteredEgresos.map((e) => (
-                    <tr key={e.id} className="hover:bg-slate-50/80 transition-colors">
-                      <td className="px-3.5 py-2.5 whitespace-nowrap text-slate-400 font-mono text-[11px]">
-                        #{String(e.id).slice(-4)}
-                      </td>
-                      <td className="px-3.5 py-2.5 whitespace-nowrap text-slate-600 font-mono text-[11px]">
-                        {e.fecha}
-                      </td>
-                      <td className="px-3.5 py-2.5 whitespace-nowrap">
-                        <span className={`px-2 py-0.5 rounded text-[10px] font-semibold ${
-                          e.tipo === 'FIJO' 
-                            ? 'bg-slate-100 text-slate-700 border border-slate-200' 
-                            : 'bg-amber-50 text-amber-700 border border-amber-200'
-                        }`}>
-                          {e.tipo}
-                        </span>
-                      </td>
-                      <td className="px-3.5 py-2.5 font-medium text-slate-900 whitespace-nowrap">
-                        {e.categoria}
-                      </td>
-                      <td className="px-3.5 py-2.5 text-slate-700">
-                        {highlightMatch(e.descripcion || '', searchDescription)}
-                      </td>
-                      <td className="px-3.5 py-2.5 text-right font-semibold text-slate-900 whitespace-nowrap">
-                        S/ {Number(e.monto).toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
+        <button
+          onClick={() => setActiveSubTab('egresos')}
+          className={`px-4 py-2 text-xs font-semibold rounded-t-lg transition-all cursor-pointer flex items-center gap-2 border-b-2 ${
+            activeSubTab === 'egresos'
+              ? 'border-emerald-600 text-emerald-700 bg-emerald-50/50'
+              : 'border-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+          }`}
+        >
+          <ArrowDownRight className="w-4 h-4 text-rose-600" />
+          <span>Egresos Operativos ({filteredEgresos.length} gastos)</span>
+        </button>
       </div>
 
-      {/* Modal: Registrar Egreso (Selector en Cascada Tipo -> Categoría) */}
-      {showAddModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs">
-          <div className="relative w-full max-w-md bg-white border border-slate-200 rounded-xl shadow-xl p-5">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-200 mb-4">
+      {/* ============================================================== */}
+      {/* SUB-TAB 1: FLUJO DE FONDOS (BALANCE NETO COMPARATIVO)          */}
+      {/* ============================================================== */}
+      {activeSubTab === 'flujo' && (
+        <div className="space-y-4">
+          {/* 4 Summary Cards */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {/* Total Ingresos */}
+            <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-medium text-slate-500">
+                  Total Ingresos ({formatMonthLabel(selectedMonth)})
+                </span>
+                <div className="w-7 h-7 rounded-md bg-emerald-50 text-emerald-600 border border-emerald-200 flex items-center justify-center">
+                  <ArrowUpRight className="w-4 h-4" />
+                </div>
+              </div>
+              <div className="mt-2.5">
+                <span className="text-2xl font-bold text-emerald-700 tracking-tight">
+                  S/ {balanceNeto.ing.toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </span>
+                <p className="text-[11px] text-slate-500 mt-1">
+                  {ingresosSummary.count} transacciones de cobranza
+                </p>
+              </div>
+            </div>
+
+            {/* Total Egresos */}
+            <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-medium text-slate-500">
+                  Total Egresos ({formatMonthLabel(selectedMonth)})
+                </span>
+                <div className="w-7 h-7 rounded-md bg-rose-50 text-rose-600 border border-rose-200 flex items-center justify-center">
+                  <ArrowDownRight className="w-4 h-4" />
+                </div>
+              </div>
+              <div className="mt-2.5">
+                <span className="text-2xl font-bold text-rose-700 tracking-tight">
+                  S/ {balanceNeto.egr.toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </span>
+                <p className="text-[11px] text-slate-500 mt-1">
+                  {egresosSummary.count} movimientos operativos
+                </p>
+              </div>
+            </div>
+
+            {/* Superávit / Balance Neto */}
+            <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-medium text-slate-500">
+                  Superávit / Balance Neto
+                </span>
+                <div className={`w-7 h-7 rounded-md flex items-center justify-center border ${
+                  balanceNeto.neto >= 0 ? 'bg-emerald-50 text-emerald-600 border-emerald-200' : 'bg-rose-50 text-rose-600 border-rose-200'
+                }`}>
+                  <DollarSign className="w-4 h-4" />
+                </div>
+              </div>
+              <div className="mt-2.5">
+                <span className={`text-2xl font-bold tracking-tight ${
+                  balanceNeto.neto >= 0 ? 'text-emerald-700' : 'text-rose-700'
+                }`}>
+                  S/ {balanceNeto.neto.toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </span>
+                <p className="text-[11px] text-slate-500 mt-1">
+                  {balanceNeto.neto >= 0 ? 'Flujo de caja positivo' : 'Déficit operativo temporal'}
+                </p>
+              </div>
+            </div>
+
+            {/* Margen Operativo */}
+            <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-medium text-slate-500">
+                  Margen Operativo
+                </span>
+                <div className="w-7 h-7 rounded-md bg-blue-50 text-blue-600 border border-blue-200 flex items-center justify-center">
+                  <TrendingUp className="w-4 h-4" />
+                </div>
+              </div>
+              <div className="mt-2.5">
+                <span className="text-2xl font-bold text-slate-900 tracking-tight">
+                  {balanceNeto.margen}%
+                </span>
+                <p className="text-[11px] text-slate-500 mt-1">
+                  Retención de liquidez sobre recaudación
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Comparative Cashflow BarChart */}
+          <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
+              <div>
+                <h3 className="text-sm font-bold text-slate-900">
+                  Comparativa Mensual de Ingresos vs Egresos (2026)
+                </h3>
+                <p className="text-[11px] text-slate-500">
+                  Consolidado de los 10 meses registrados en Supabase (Enero a Octubre 2026)
+                </p>
+              </div>
+              <div className="flex items-center gap-3 text-xs">
+                <div className="flex items-center gap-1.5">
+                  <span className="w-3 h-3 rounded-sm bg-emerald-600" />
+                  <span className="text-slate-600">Ingresos</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="w-3 h-3 rounded-sm bg-rose-500" />
+                  <span className="text-slate-600">Egresos</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="h-72 w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={comparativeChartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                  <XAxis dataKey="mes" tick={{ fontSize: 11, fill: '#64748b' }} axisLine={false} tickLine={false} />
+                  <YAxis 
+                    tick={{ fontSize: 10, fill: '#64748b' }} 
+                    axisLine={false} 
+                    tickLine={false} 
+                    tickFormatter={(val) => `S/${(val / 1000).toFixed(0)}k`} 
+                  />
+                  <Tooltip 
+                    formatter={(val: any, name: any) => [`S/ ${Number(val).toLocaleString('es-PE')}`, name === 'ingresos' ? 'Ingresos (Pagos)' : 'Egresos (Gastos)']}
+                    labelFormatter={(label, p) => p?.[0]?.payload?.mesFull || label}
+                    contentStyle={{ backgroundColor: '#ffffff', borderColor: '#e2e8f0', borderRadius: '8px', fontSize: '11px', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)' }}
+                  />
+                  <Bar dataKey="ingresos" fill="#10b981" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="egresos" fill="#f43f5e" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+
+          {/* Breakdown Table by Month */}
+          <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-xs">
+            <div className="p-4 border-b border-slate-200 bg-slate-50/50">
+              <h3 className="text-xs font-bold text-slate-900">
+                Resumen Contable por Periodo Mensual
+              </h3>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-slate-50 text-slate-500 uppercase text-[11px] font-medium border-b border-slate-200">
+                  <tr>
+                    <th className="px-4 py-3">Periodo</th>
+                    <th className="px-4 py-3 text-right">Recaudación (Ingresos)</th>
+                    <th className="px-4 py-3 text-right">N° Pagos</th>
+                    <th className="px-4 py-3 text-right">Gastos (Egresos)</th>
+                    <th className="px-4 py-3 text-right">N° Gastos</th>
+                    <th className="px-4 py-3 text-right">Balance Neto</th>
+                    <th className="px-4 py-3 text-center">Estado</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 text-slate-700">
+                  {availableMonths.map((m) => {
+                    const balance = m.pagosTotal - m.egresosTotal;
+                    const isPositive = balance >= 0;
+
+                    return (
+                      <tr 
+                        key={m.value} 
+                        onClick={() => { setSelectedMonth(m.value); }}
+                        className={`hover:bg-slate-50/80 transition-colors cursor-pointer ${
+                          selectedMonth === m.value ? 'bg-emerald-50/40' : ''
+                        }`}
+                      >
+                        <td className="px-4 py-3 font-semibold text-slate-900">
+                          {m.label}
+                        </td>
+                        <td className="px-4 py-3 text-right font-bold text-emerald-700 whitespace-nowrap">
+                          S/ {m.pagosTotal.toLocaleString('es-PE', { minimumFractionDigits: 2 })}
+                        </td>
+                        <td className="px-4 py-3 text-right text-slate-600">
+                          {m.pagosCount} pagos
+                        </td>
+                        <td className="px-4 py-3 text-right font-medium text-rose-700 whitespace-nowrap">
+                          S/ {m.egresosTotal.toLocaleString('es-PE', { minimumFractionDigits: 2 })}
+                        </td>
+                        <td className="px-4 py-3 text-right text-slate-600">
+                          {m.egresosCount} egresos
+                        </td>
+                        <td className={`px-4 py-3 text-right font-bold whitespace-nowrap ${
+                          isPositive ? 'text-emerald-700' : 'text-rose-700'
+                        }`}>
+                          S/ {balance.toLocaleString('es-PE', { minimumFractionDigits: 2 })}
+                        </td>
+                        <td className="px-4 py-3 text-center">
+                          {isPositive ? (
+                            <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                              Superávit
+                            </span>
+                          ) : (
+                            <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-rose-50 text-rose-700 border border-rose-200">
+                              Déficit
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ============================================================== */}
+      {/* SUB-TAB 2: INGRESOS & RECAUDACIÓN (710 PAGOS SUPABASE)         */}
+      {/* ============================================================== */}
+      {activeSubTab === 'ingresos' && (
+        <div className="space-y-4">
+          {/* Ingresos KPI Cards */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {/* Recaudación Total */}
+            <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-medium text-slate-500">
+                  Recaudación {formatMonthLabel(selectedMonth)}
+                </span>
+                <div className="w-7 h-7 rounded-md bg-emerald-50 text-emerald-600 border border-emerald-200 flex items-center justify-center">
+                  <DollarSign className="w-4 h-4" />
+                </div>
+              </div>
+              <div className="mt-2.5">
+                <span className="text-2xl font-bold text-emerald-700 tracking-tight">
+                  S/ {ingresosSummary.total.toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </span>
+                <p className="text-[11px] text-slate-500 mt-1">
+                  {ingresosSummary.count} transacciones registradas
+                </p>
+              </div>
+            </div>
+
+            {/* Banco BCP */}
+            <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-medium text-slate-500">
+                  Abonos BCP
+                </span>
+                <div className="w-7 h-7 rounded-md bg-blue-50 text-blue-600 border border-blue-200 flex items-center justify-center">
+                  <Building className="w-4 h-4" />
+                </div>
+              </div>
+              <div className="mt-2.5">
+                <span className="text-2xl font-bold text-blue-700 tracking-tight">
+                  S/ {(ingresosSummary.byMethod['BCP'] || 0).toLocaleString('es-PE', { minimumFractionDigits: 2 })}
+                </span>
+                <p className="text-[11px] text-slate-500 mt-1">
+                  Transferencias y ventanilla BCP
+                </p>
+              </div>
+            </div>
+
+            {/* Interbank & Banbif */}
+            <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-medium text-slate-500">
+                  Interbank &amp; Banbif
+                </span>
+                <div className="w-7 h-7 rounded-md bg-cyan-50 text-cyan-600 border border-cyan-200 flex items-center justify-center">
+                  <Building className="w-4 h-4" />
+                </div>
+              </div>
+              <div className="mt-2.5">
+                <span className="text-2xl font-bold text-slate-900 tracking-tight">
+                  S/ {((ingresosSummary.byMethod['INTERBANK'] || 0) + (ingresosSummary.byMethod['BANBIF'] || 0)).toLocaleString('es-PE', { minimumFractionDigits: 2 })}
+                </span>
+                <p className="text-[11px] text-slate-500 mt-1">
+                  Cuentas recaudadoras alternas
+                </p>
+              </div>
+            </div>
+
+            {/* Yape & Efectivo */}
+            <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-medium text-slate-500">
+                  Yape &amp; Efectivo
+                </span>
+                <div className="w-7 h-7 rounded-md bg-purple-50 text-purple-600 border border-purple-200 flex items-center justify-center">
+                  <Smartphone className="w-4 h-4" />
+                </div>
+              </div>
+              <div className="mt-2.5">
+                <span className="text-2xl font-bold text-purple-700 tracking-tight">
+                  S/ {((ingresosSummary.byMethod['YAPE'] || 0) + (ingresosSummary.byMethod['EFECTIVO'] || 0)).toLocaleString('es-PE', { minimumFractionDigits: 2 })}
+                </span>
+                <p className="text-[11px] text-slate-500 mt-1">
+                  Billetera digital y caja presencial
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Month Badges Quick Bar */}
+          <div className="bg-white border border-slate-200 rounded-xl p-3 shadow-xs flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-thin">
+            <button
+              onClick={() => { setSelectedMonth('ALL'); setIngresosPage(1); }}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all shrink-0 cursor-pointer ${
+                selectedMonth === 'ALL'
+                  ? 'bg-emerald-600 text-white font-semibold shadow-xs'
+                  : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+              }`}
+            >
+              Todos los Meses ({pagos.length})
+            </button>
+            {availableMonths.map(m => (
+              <button
+                key={m.value}
+                onClick={() => { setSelectedMonth(m.value); setIngresosPage(1); }}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all shrink-0 cursor-pointer flex items-center gap-1.5 ${
+                  selectedMonth === m.value
+                    ? 'bg-emerald-600 text-white font-semibold shadow-xs'
+                    : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200'
+                }`}
+              >
+                <span>{m.label}</span>
+                <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${
+                  selectedMonth === m.value ? 'bg-emerald-700 text-white' : 'bg-emerald-50 text-emerald-700 font-semibold'
+                }`}>
+                  {m.pagosCount}
+                </span>
+              </button>
+            ))}
+          </div>
+
+          {/* Table Controls (Search & Method Filter) */}
+          <div className="bg-white border border-slate-200 rounded-xl p-3 shadow-xs flex flex-col sm:flex-row items-center justify-between gap-3">
+            {/* Payment Method Tabs */}
+            <div className="flex items-center gap-1 p-1 bg-slate-100 rounded-lg w-fit border border-slate-200">
+              {['ALL', 'BCP', 'INTERBANK', 'BANBIF', 'YAPE', 'EFECTIVO'].map((metodo) => (
+                <button
+                  key={metodo}
+                  onClick={() => { setIngresosMethod(metodo); setIngresosPage(1); }}
+                  className={`px-2.5 py-1 rounded-md text-[11px] font-medium transition-all cursor-pointer ${
+                    ingresosMethod === metodo ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  {metodo === 'ALL' ? 'Todos' : metodo}
+                </button>
+              ))}
+            </div>
+
+            {/* Search */}
+            <div className="relative w-full sm:w-72">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+              <input
+                type="text"
+                value={ingresosSearch}
+                onChange={(e) => { setIngresosSearch(e.target.value); setIngresosPage(1); }}
+                placeholder="Buscar por N° Operación, titular o contrato..."
+                className="w-full pl-9 pr-3 py-2 bg-slate-50 hover:bg-white focus:bg-white border border-slate-200 rounded-lg text-slate-800 placeholder-slate-400 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500 transition-colors"
+              />
+            </div>
+          </div>
+
+          {/* Pagos Table */}
+          <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-xs">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-slate-50 text-slate-500 uppercase text-[11px] font-medium border-b border-slate-200 tracking-wider">
+                  <tr>
+                    <th className="px-4 py-3">Fecha de Pago</th>
+                    <th className="px-4 py-3">N° Operación / Voucher</th>
+                    <th className="px-4 py-3">Titular / Cliente</th>
+                    <th className="px-4 py-3">Contrato Asignado</th>
+                    <th className="px-4 py-3">Concepto</th>
+                    <th className="px-4 py-3">Canal / Banco</th>
+                    <th className="px-4 py-3 text-right">Monto Recaudado</th>
+                    <th className="px-4 py-3 text-center">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 text-slate-700">
+                  {loadingPagos ? (
+                    <tr>
+                      <td colSpan={8} className="px-4 py-12 text-center">
+                        <div className="flex flex-col items-center justify-center gap-2">
+                          <div className="w-6 h-6 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin" />
+                          <span className="text-xs text-slate-500">Cargando registros reales de pagos desde Supabase...</span>
+                        </div>
+                      </td>
+                    </tr>
+                  ) : filteredPagos.length === 0 ? (
+                    <tr>
+                      <td colSpan={8} className="px-4 py-12 text-center">
+                        <Receipt className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+                        <p className="text-xs font-semibold text-slate-700">
+                          No se encontraron pagos con los filtros seleccionados
+                        </p>
+                        <p className="text-[11px] text-slate-400 mt-0.5">
+                          Verifica el mes seleccionado o cambia el término de búsqueda
+                        </p>
+                      </td>
+                    </tr>
+                  ) : (
+                    paginatedPagos.map((pago) => (
+                      <tr key={pago.id} className="hover:bg-slate-50/80 transition-colors">
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          <span className="font-semibold text-slate-900 block">
+                            {pago.fecha_pago}
+                          </span>
+                          <span className="text-[10px] text-slate-400">
+                            {formatMonthLabel((pago.fecha_pago || '').slice(0, 7))}
+                          </span>
+                        </td>
+
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          <span className="font-mono text-xs font-semibold text-slate-800 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
+                            {pago.numero_operacion}
+                          </span>
+                        </td>
+
+                        <td className="px-4 py-3">
+                          <span className="font-medium text-slate-800 text-xs block truncate max-w-[200px]">
+                            {pago.propietario || 'Ingreso Directo'}
+                          </span>
+                        </td>
+
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          <span className="font-mono text-xs text-slate-700 font-medium">
+                            {pago.codigo_contrato || 'S/A'}
+                          </span>
+                        </td>
+
+                        <td className="px-4 py-3">
+                          <span className="text-xs text-slate-600">
+                            {pago.tipo_pago || 'CUOTAS MENSUALES'}
+                          </span>
+                        </td>
+
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          {renderMethodBadge(pago.metodo_pago)}
+                        </td>
+
+                        <td className="px-4 py-3 text-right whitespace-nowrap font-bold text-emerald-700 text-xs">
+                          S/ {Number(pago.monto).toLocaleString('es-PE', { minimumFractionDigits: 2 })}
+                        </td>
+
+                        <td className="px-4 py-3 text-center whitespace-nowrap">
+                          <div className="flex items-center justify-center gap-1.5">
+                            <button
+                              onClick={() => setSelectedVoucher(pago)}
+                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium text-slate-700 hover:text-slate-900 bg-white hover:bg-slate-50 border border-slate-200 transition-colors cursor-pointer shadow-xs"
+                              title="Ver comprobante de pago"
+                            >
+                              <Eye className="w-3.5 h-3.5 text-slate-500" />
+                              <span>Voucher</span>
+                            </button>
+                            <button
+                              onClick={() => setPagoToDelete(pago)}
+                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium text-rose-700 hover:text-rose-800 bg-rose-50 hover:bg-rose-100 border border-rose-200 transition-colors cursor-pointer shadow-xs"
+                              title="Anular pago y revertir cuota en contrato"
+                            >
+                              <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                              <span>Anular</span>
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Pagination Footer */}
+            <div className="p-3 bg-white border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500">
+              <div>
+                <span>Página <b>{ingresosPage}</b> de <b>{ingresosTotalPages}</b></span>
+                <span className="mx-2">•</span>
+                <span>Total <b>{filteredPagos.length}</b> pagos mostrados</span>
+              </div>
+
               <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-lg bg-emerald-50 border border-emerald-200 flex items-center justify-center text-emerald-700">
-                  <Wallet className="w-4 h-4" />
+                <button
+                  onClick={() => setIngresosPage(prev => Math.max(1, prev - 1))}
+                  disabled={ingresosPage === 1}
+                  className="p-1 rounded-md border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-40 cursor-pointer"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={() => setIngresosPage(prev => Math.min(ingresosTotalPages, prev + 1))}
+                  disabled={ingresosPage >= ingresosTotalPages}
+                  className="p-1 rounded-md border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-40 cursor-pointer"
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ============================================================== */}
+      {/* SUB-TAB 3: EGRESOS OPERATIVOS (497 GASTOS SUPABASE)            */}
+      {/* ============================================================== */}
+      {activeSubTab === 'egresos' && (
+        <div className="space-y-4">
+          {/* Egresos Error Banner */}
+          {egresosError && (
+            <div className="bg-rose-50 border border-rose-200 rounded-xl p-4 flex items-start justify-between gap-3 text-rose-800 text-xs shadow-xs animate-fadeIn">
+              <div className="flex items-start gap-2.5">
+                <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-semibold text-rose-900">Error al consultar la tabla 'egresos' en Supabase</p>
+                  <p className="text-[11px] text-rose-700 mt-0.5 font-mono">{egresosError}</p>
+                </div>
+              </div>
+              <button
+                onClick={() => refreshEgresos()}
+                className="px-2.5 py-1 bg-white hover:bg-rose-100 text-rose-700 font-medium rounded-md border border-rose-200 text-xs shrink-0 cursor-pointer transition-colors"
+              >
+                Reintentar
+              </button>
+            </div>
+          )}
+
+          {/* Egresos KPI Cards */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {/* Total Egresos */}
+            <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-medium text-slate-500">
+                  {selectedMonth !== 'ALL' ? `Total Egresos (${formatMonthLabel(selectedMonth)})` : 'Total Egresos Reales'}
+                </span>
+                <div className="w-7 h-7 rounded-md bg-rose-50 text-rose-600 border border-rose-200 flex items-center justify-center">
+                  <TrendingDown className="w-3.5 h-3.5" />
+                </div>
+              </div>
+              <div className="mt-2">
+                <span className="text-xl font-bold text-slate-900">
+                  S/ {egresosSummary.total.toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </span>
+                <p className="text-[11px] text-slate-400 mt-0.5">
+                  {egresosSummary.count} movimientos operativos en Supabase
+                </p>
+              </div>
+            </div>
+
+            {/* Egresos Fijos */}
+            <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-medium text-slate-500">
+                  Costos Fijos (Planilla / Local)
+                </span>
+                <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-slate-100 text-slate-600">
+                  Fijo
+                </span>
+              </div>
+              <div className="mt-2">
+                <span className="text-xl font-bold text-slate-900">
+                  S/ {egresosSummary.fijos.toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </span>
+                <p className="text-[11px] text-slate-400 mt-0.5">
+                  {egresosSummary.total > 0 ? `${Math.round((egresosSummary.fijos / egresosSummary.total) * 100)}% del total` : '0%'}
+                </p>
+              </div>
+            </div>
+
+            {/* Egresos Variables */}
+            <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-medium text-slate-500">
+                  Gastos Variables (Marketing / Obras)
+                </span>
+                <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-50 text-amber-700">
+                  Variable
+                </span>
+              </div>
+              <div className="mt-2">
+                <span className="text-xl font-bold text-amber-700">
+                  S/ {egresosSummary.variables.toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </span>
+                <p className="text-[11px] text-slate-400 mt-0.5">
+                  {egresosSummary.total > 0 ? `${Math.round((egresosSummary.variables / egresosSummary.total) * 100)}% del total` : '0%'}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Categories Breakdown */}
+          {egresosSummary.categoriesBreakdown.length > 0 && (
+            <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs">
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-xs font-semibold text-slate-800 flex items-center gap-1.5">
+                  <PieIcon className="w-3.5 h-3.5 text-slate-400" />
+                  Distribución por Categorías ({formatMonthLabel(selectedMonth)})
+                </span>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
+                {egresosSummary.categoriesBreakdown.slice(0, 8).map((cat, idx) => (
+                  <button
+                    key={idx}
+                    onClick={() => {
+                      setSelectedCategoria(cat.categoria);
+                      setEgresosPage(1);
+                    }}
+                    className={`p-2.5 rounded-lg border text-left transition-all cursor-pointer ${
+                      selectedCategoria === cat.categoria
+                        ? 'bg-emerald-50 border-emerald-300 ring-1 ring-emerald-500'
+                        : 'bg-slate-50/50 hover:bg-slate-100 border-slate-200'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-bold text-slate-500 uppercase truncate">
+                        {cat.categoria}
+                      </span>
+                      <span className="text-[10px] font-mono text-slate-400">
+                        {cat.porcentaje}%
+                      </span>
+                    </div>
+                    <div className="mt-1 flex items-baseline justify-between">
+                      <span className="text-xs font-bold text-slate-800">
+                        S/ {cat.monto.toLocaleString('es-PE', { minimumFractionDigits: 2 })}
+                      </span>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Egresos Filters & Search */}
+          <div className="bg-white border border-slate-200 rounded-xl p-3 shadow-xs flex flex-col sm:flex-row items-center justify-between gap-3">
+            <div className="flex items-center gap-1 p-1 bg-slate-100 rounded-lg w-fit border border-slate-200">
+              <button
+                onClick={() => { setSelectedTipo('ALL'); setEgresosPage(1); }}
+                className={`px-3 py-1 rounded-md text-xs font-medium cursor-pointer ${
+                  selectedTipo === 'ALL' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600'
+                }`}
+              >
+                Todos
+              </button>
+              <button
+                onClick={() => { setSelectedTipo('FIJO'); setEgresosPage(1); }}
+                className={`px-3 py-1 rounded-md text-xs font-medium cursor-pointer ${
+                  selectedTipo === 'FIJO' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600'
+                }`}
+              >
+                Fijos
+              </button>
+              <button
+                onClick={() => { setSelectedTipo('VARIABLE'); setEgresosPage(1); }}
+                className={`px-3 py-1 rounded-md text-xs font-medium cursor-pointer ${
+                  selectedTipo === 'VARIABLE' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600'
+                }`}
+              >
+                Variables
+              </button>
+            </div>
+
+            <div className="relative w-full sm:w-72">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+              <input
+                type="text"
+                value={searchDescription}
+                onChange={(e) => { setSearchDescription(e.target.value); setEgresosPage(1); }}
+                placeholder="Buscar por concepto o proveedor..."
+                className="w-full pl-9 pr-3 py-2 bg-slate-50 hover:bg-white focus:bg-white border border-slate-200 rounded-lg text-slate-800 placeholder-slate-400 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500 transition-colors"
+              />
+            </div>
+          </div>
+
+          {/* Egresos Table */}
+          <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-xs">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-slate-50 text-slate-500 uppercase text-[11px] font-medium border-b border-slate-200 tracking-wider">
+                  <tr>
+                    <th className="px-4 py-3">Fecha</th>
+                    <th className="px-4 py-3">Tipo</th>
+                    <th className="px-4 py-3">Categoría</th>
+                    <th className="px-4 py-3">Descripción / Concepto</th>
+                    <th className="px-4 py-3 text-right">Monto</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 text-slate-700">
+                  {loadingEgresos ? (
+                    <tr>
+                      <td colSpan={5} className="px-4 py-12 text-center">
+                        <div className="flex flex-col items-center justify-center gap-2">
+                          <div className="w-6 h-6 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin" />
+                          <span className="text-xs text-slate-500">Cargando egresos desde Supabase...</span>
+                        </div>
+                      </td>
+                    </tr>
+                  ) : filteredEgresos.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="px-4 py-12 text-center">
+                        <Wallet className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+                        <p className="text-xs font-semibold text-slate-700">
+                          No se encontraron egresos registrados
+                        </p>
+                        <p className="text-[11px] text-slate-400 mt-0.5">
+                          Intenta modificar los filtros o el periodo seleccionado
+                        </p>
+                      </td>
+                    </tr>
+                  ) : (
+                    paginatedEgresos.map((egr) => (
+                      <tr key={egr.id} className="hover:bg-slate-50/80 transition-colors">
+                        <td className="px-4 py-3 whitespace-nowrap font-medium text-slate-900">
+                          {egr.fecha}
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          {egr.tipo === 'FIJO' ? (
+                            <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-slate-100 text-slate-700 border border-slate-200">
+                              FIJO
+                            </span>
+                          ) : (
+                            <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-amber-50 text-amber-700 border border-amber-200">
+                              VARIABLE
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className="text-xs font-medium text-slate-700 block truncate max-w-[200px]">
+                            {egr.categoria}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-slate-600">
+                          {highlightMatch(egr.descripcion, searchDescription)}
+                        </td>
+                        <td className="px-4 py-3 text-right whitespace-nowrap font-bold text-rose-700 text-xs">
+                          S/ {Number(egr.monto).toLocaleString('es-PE', { minimumFractionDigits: 2 })}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Pagination Footer */}
+            <div className="p-3 bg-white border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500">
+              <div>
+                <span>Página <b>{egresosPage}</b> de <b>{egresosTotalPages}</b></span>
+                <span className="mx-2">•</span>
+                <span>Total <b>{filteredEgresos.length}</b> egresos</span>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setEgresosPage(prev => Math.max(1, prev - 1))}
+                  disabled={egresosPage === 1}
+                  className="p-1 rounded-md border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-40 cursor-pointer"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={() => setEgresosPage(prev => Math.min(egresosTotalPages, prev + 1))}
+                  disabled={egresosPage >= egresosTotalPages}
+                  className="p-1 rounded-md border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-40 cursor-pointer"
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ============================================================== */}
+      {/* MODAL: REGISTRAR NUEVO EGRESO                                  */}
+      {/* ============================================================== */}
+      {showAddModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs animate-fadeIn">
+          <div className="relative w-full max-w-lg bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden animate-scaleIn">
+            <div className="px-5 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50/50">
+              <div className="flex items-center gap-2">
+                <div className="w-7 h-7 rounded-md bg-emerald-50 text-emerald-600 flex items-center justify-center">
+                  <Receipt className="w-4 h-4" />
                 </div>
                 <div>
-                  <h2 className="text-sm font-bold text-slate-900">
-                    Registrar Egreso Operativo
-                  </h2>
-                  <p className="text-[10px] text-slate-500">
-                    Inserta directamente en la tabla <code className="font-mono text-slate-700">egresos</code> de Supabase
-                  </p>
+                  <h3 className="font-bold text-xs text-slate-900">Registrar Nuevo Egreso Operativo</h3>
+                  <p className="text-[11px] text-slate-500">Se registrará directamente en la tabla <code className="font-mono text-emerald-600">egresos</code> de Supabase</p>
                 </div>
               </div>
               <button
                 onClick={() => setShowAddModal(false)}
-                className="p-1 text-slate-400 hover:text-slate-600 rounded-md hover:bg-slate-100 transition-colors cursor-pointer"
+                className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-md transition-colors cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            {/* Error Message Alert Banner */}
-            {errorMsg && (
-              <div className="mb-3.5 p-3 rounded-lg bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-start gap-2 animate-fadeIn">
-                <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
-                <div className="flex-1 min-w-0">
-                  <span className="font-semibold block">Error de Supabase:</span>
-                  <span className="text-[11px] font-mono break-words">{errorMsg}</span>
+            <form onSubmit={handleSubmitEgreso} className="p-5 space-y-4 text-xs">
+              {errorMsg && (
+                <div className="p-3 rounded-lg bg-rose-50 border border-rose-200 flex items-start gap-2 text-rose-700 text-xs">
+                  <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                  <span>{errorMsg}</span>
                 </div>
-              </div>
-            )}
+              )}
 
-            <form onSubmit={handleSubmit} className="space-y-4 text-xs">
-              {/* 1. Selector Tipo de Egreso (Radio Segmented Toggle) */}
+              {/* 1. Selector Tipo */}
               <div>
-                <label className="block text-slate-700 mb-1.5 font-medium text-[11px]">
-                  Tipo de Egreso <span className="text-rose-500">*</span>
+                <label className="block text-slate-700 mb-1 font-medium text-[11px]">
+                  Tipo de Gasto <span className="text-rose-500">*</span>
                 </label>
-                <div className="grid grid-cols-2 gap-2 p-1 bg-slate-100 rounded-lg border border-slate-200/70">
+                <div className="grid grid-cols-2 gap-2 p-1 bg-slate-100 rounded-lg border border-slate-200">
                   <button
                     type="button"
                     onClick={() => handleTipoChange('FIJO')}
@@ -873,7 +1497,7 @@ export const CajaChicaModule: React.FC = () => {
                 </div>
               </div>
 
-              {/* 2. Categoría Dependiente (Cascading Select) */}
+              {/* 2. Categoría Dependiente */}
               <div>
                 <label className="block text-slate-700 mb-1 font-medium text-[11px]">
                   Categoría ({tipo === 'FIJO' ? 'Fija' : 'Variable'}) <span className="text-rose-500">*</span>
@@ -893,7 +1517,6 @@ export const CajaChicaModule: React.FC = () => {
                   ))}
                 </select>
 
-                {/* Category Hint / Subtitle */}
                 {currentCategoryDef && !isOtherCategory && (
                   <p className="text-[11px] text-slate-500 mt-1 flex items-start gap-1">
                     <Info className="w-3 h-3 text-slate-400 shrink-0 mt-0.5" />
@@ -901,7 +1524,6 @@ export const CajaChicaModule: React.FC = () => {
                   </p>
                 )}
 
-                {/* Custom Category Input if "OTRA CATEGORÍA..." is selected */}
                 {isOtherCategory && (
                   <div className="mt-2 animate-fadeIn">
                     <label className="block text-slate-600 text-[10px] uppercase font-semibold mb-1">
@@ -951,7 +1573,7 @@ export const CajaChicaModule: React.FC = () => {
                 />
               </div>
 
-              {/* 5. Monto en Soles (S/.) */}
+              {/* 5. Monto en Soles */}
               <div>
                 <label className="block text-slate-700 mb-1 font-medium text-[11px]">
                   Monto en Soles (S/.) <span className="text-rose-500">*</span>
@@ -990,6 +1612,112 @@ export const CajaChicaModule: React.FC = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Voucher Modal */}
+      {selectedVoucher && (
+        <VoucherModal
+          pago={selectedVoucher}
+          onClose={() => setSelectedVoucher(null)}
+        />
+      )}
+
+      {/* Delete / Anular Pago Confirmation Modal */}
+      {pagoToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs">
+          <div className="relative w-full max-w-md bg-white border border-slate-200 rounded-xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            {/* Header */}
+            <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-rose-50/50">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-lg bg-rose-100 border border-rose-200 flex items-center justify-center text-rose-600">
+                  <AlertTriangle className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900">
+                    Anular y Eliminar Pago
+                  </h3>
+                  <p className="text-[11px] text-slate-500">
+                    Confirmación de anulación de ingreso
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => !isDeletingPago && setPagoToDelete(null)}
+                disabled={isDeletingPago}
+                className="p-1 text-slate-400 hover:text-slate-600 rounded-md hover:bg-slate-100 transition-colors cursor-pointer disabled:opacity-50"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="p-5 space-y-4 text-xs">
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg space-y-2">
+                <div className="flex justify-between items-center text-slate-600">
+                  <span>N° Operación:</span>
+                  <span className="font-mono font-bold text-slate-900">{pagoToDelete.numero_operacion || 'S/N'}</span>
+                </div>
+                <div className="flex justify-between items-center text-slate-600">
+                  <span>Titular:</span>
+                  <span className="font-medium text-slate-900 text-right">{pagoToDelete.propietario || 'Ingreso Directo'}</span>
+                </div>
+                <div className="flex justify-between items-center text-slate-600">
+                  <span>Contrato:</span>
+                  <span className="font-mono font-medium text-slate-900">{pagoToDelete.codigo_contrato || 'S/A'}</span>
+                </div>
+                <div className="flex justify-between items-center text-slate-600">
+                  <span>Monto Abonado:</span>
+                  <span className="font-bold text-emerald-700 text-sm">
+                    S/ {Number(pagoToDelete.monto).toLocaleString('es-PE', { minimumFractionDigits: 2 })}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center text-slate-600">
+                  <span>Fecha de Pago:</span>
+                  <span className="text-slate-800">{pagoToDelete.fecha_pago}</span>
+                </div>
+                <div className="flex justify-between items-center text-slate-600">
+                  <span>Canal / Banco:</span>
+                  <span className="font-semibold text-slate-800">{pagoToDelete.metodo_pago}</span>
+                </div>
+              </div>
+
+              {/* Warning Alert */}
+              <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-amber-900 text-[11px] leading-relaxed space-y-1">
+                <div className="font-semibold flex items-center gap-1.5 text-amber-800">
+                  <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                  <span>Impacto de la anulación en el sistema:</span>
+                </div>
+                <ul className="list-disc list-inside space-y-0.5 text-amber-800/90 pl-1">
+                  <li>Se eliminará permanentemente de la tabla <b>pagos</b> en Supabase.</li>
+                  <li>Se <b>restará la cuota</b> en el contrato (<code className="bg-amber-100 px-1 py-0.5 rounded text-amber-900">cuotas_pagadas_base</code>).</li>
+                  <li>Se <b>restablecerá la deuda</b> pendiente por S/ {Number(pagoToDelete.monto).toLocaleString('es-PE', { minimumFractionDigits: 2 })}.</li>
+                  <li>El contrato volverá a estado ACTIVO en caso estuviera liquidado.</li>
+                </ul>
+              </div>
+
+              {/* Actions */}
+              <div className="pt-2 flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setPagoToDelete(null)}
+                  disabled={isDeletingPago}
+                  className="px-3.5 py-2 bg-white hover:bg-slate-100 text-slate-700 rounded-lg border border-slate-200 text-xs font-medium cursor-pointer transition-colors disabled:opacity-50"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmDeletePago}
+                  disabled={isDeletingPago}
+                  className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white font-medium rounded-lg text-xs flex items-center gap-1.5 shadow-xs cursor-pointer transition-colors disabled:opacity-50"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>{isDeletingPago ? 'Anulando...' : 'Sí, Anular Pago'}</span>
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

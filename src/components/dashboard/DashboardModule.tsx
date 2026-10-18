@@ -43,6 +43,7 @@ export const DashboardModule: React.FC = () => {
 
   const { activeColorTheme } = useTheme();
   const [activeVoucher, setActiveVoucher] = useState<Pago | null>(null);
+  const [chartRange, setChartRange] = useState<'all' | '6m'>('all');
 
   // 1. Data for Monthly Inflow vs Outflow Bar Chart computed dynamically from real records
   const monthlyData = useMemo(() => {
@@ -69,7 +70,7 @@ export const DashboardModule: React.FC = () => {
     // Find all distinct months or generate recent 6 months
     const allMonths = Array.from(new Set([...Object.keys(incomeByMonth), ...Object.keys(expenseByMonth)])).sort();
     
-    let targetMonths = allMonths.slice(-6);
+    let targetMonths = chartRange === 'all' ? allMonths : allMonths.slice(-6);
     if (targetMonths.length === 0) {
       const now = new Date();
       for (let i = 5; i >= 0; i--) {
@@ -89,7 +90,7 @@ export const DashboardModule: React.FC = () => {
         egresos: Math.round(expenseByMonth[ym] || 0)
       };
     });
-  }, [pagos, egresos]);
+  }, [pagos, egresos, chartRange]);
 
   // 2. Data for Donut Chart (Contado vs Crédito)
   const donutData = useMemo(() => {
@@ -290,7 +291,26 @@ export const DashboardModule: React.FC = () => {
               </h3>
               <p className="text-xs text-slate-500">Comparativa mensual de flujo de caja</p>
             </div>
-            <div className="flex items-center gap-3 text-xs">
+            <div className="flex flex-wrap items-center gap-3 text-xs">
+              <div className="flex items-center gap-1 p-0.5 bg-slate-100 rounded-lg border border-slate-200">
+                <button
+                  onClick={() => setChartRange('all')}
+                  className={`px-2 py-0.5 rounded text-[11px] font-medium transition-all cursor-pointer ${
+                    chartRange === 'all' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-500 hover:text-slate-800'
+                  }`}
+                >
+                  Todo 2026 ({monthlyData.length}m)
+                </button>
+                <button
+                  onClick={() => setChartRange('6m')}
+                  className={`px-2 py-0.5 rounded text-[11px] font-medium transition-all cursor-pointer ${
+                    chartRange === '6m' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-500 hover:text-slate-800'
+                  }`}
+                >
+                  Últimos 6m
+                </button>
+              </div>
+
               <div className="flex items-center gap-1.5">
                 <span className="w-2.5 h-2.5 rounded bg-emerald-500"></span>
                 <span className="text-slate-600">Ingresos</span>

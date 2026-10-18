@@ -1,15 +1,12 @@
 import React, { useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useData } from '../../context/DataContext';
-import { useTheme } from '../../context/ThemeContext';
 import { RolUsuario } from '../../types/database';
 import { 
   Database, 
   RefreshCw, 
   LogOut, 
   ShieldCheck, 
-  Sun, 
-  Moon, 
   User, 
   ChevronDown
 } from 'lucide-react';
@@ -17,7 +14,6 @@ import {
 export const Topbar: React.FC = () => {
   const { user, logout, switchRole } = useAuth();
   const { connectionStatus, refreshData, loading } = useData();
-  const { theme, toggleTheme, isDark } = useTheme();
 
   const [showRoleMenu, setShowRoleMenu] = useState(false);
 
@@ -47,15 +43,6 @@ export const Topbar: React.FC = () => {
 
       {/* Right side: Role selector, User, Logout */}
       <div className="flex items-center gap-2 sm:gap-3">
-        {/* Theme toggle (clean and subtle) */}
-        <button
-          onClick={toggleTheme}
-          title={isDark ? 'Modo Claro' : 'Modo Oscuro'}
-          className="p-1.5 rounded-md text-slate-500 hover:text-slate-800 hover:bg-slate-100 transition-colors cursor-pointer"
-        >
-          {isDark ? <Sun className="w-4 h-4 text-amber-500" /> : <Moon className="w-4 h-4" />}
-        </button>
-
         {/* Role Switcher */}
         <div className="relative">
           <button

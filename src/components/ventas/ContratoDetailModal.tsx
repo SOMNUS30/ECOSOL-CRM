@@ -1,13 +1,18 @@
-import React from 'react';
-import { Contrato } from '../../types/database';
+import React, { useState } from 'react';
+import { Contrato, Pago } from '../../types/database';
 import { useData } from '../../context/DataContext';
+import { toast } from 'sonner';
 import { 
   X, 
   User, 
   CreditCard, 
   FileText, 
   Building2, 
-  Plus
+  Plus,
+  Eye,
+  Trash2,
+  AlertTriangle,
+  AlertCircle
 } from 'lucide-react';
 
 interface ContratoDetailModalProps {
@@ -16,7 +21,9 @@ interface ContratoDetailModalProps {
 }
 
 export const ContratoDetailModal: React.FC<ContratoDetailModalProps> = ({ contrato, onClose }) => {
-  const { pagos, setSelectedContractForPayment, cobranzas } = useData();
+  const { pagos, setSelectedContractForPayment, cobranzas, eliminarPago, setActiveVoucher } = useData();
+  const [pagoToDelete, setPagoToDelete] = useState<Pago | null>(null);
+  const [isDeletingPago, setIsDeletingPago] = useState<boolean>(false);
 
   if (!contrato) return null;
 
@@ -34,6 +41,30 @@ export const ContratoDetailModal: React.FC<ContratoDetailModalProps> = ({ contra
     if (matchCobranza) {
       onClose();
       setSelectedContractForPayment(matchCobranza);
+    }
+  };
+
+  const handleConfirmDeletePago = async () => {
+    if (!pagoToDelete) return;
+    setIsDeletingPago(true);
+    try {
+      const res = await eliminarPago(pagoToDelete.id);
+      if (res.success) {
+        toast.success('Pago anulado exitosamente', {
+          description: `Se eliminó el pago de S/ ${Number(pagoToDelete.monto).toLocaleString('es-PE', { minimumFractionDigits: 2 })} y se actualizó el contrato.`
+        });
+        setPagoToDelete(null);
+      } else {
+        toast.error('Error al anular pago', {
+          description: res.error || 'No se pudo anular el pago en Supabase.'
+        });
+      }
+    } catch (err: any) {
+      toast.error('Error', {
+        description: err?.message || 'Error inesperado al anular el pago.'
+      });
+    } finally {
+      setIsDeletingPago(false);
     }
   };
 
@@ -219,12 +250,13 @@ export const ContratoDetailModal: React.FC<ContratoDetailModalProps> = ({ contra
                     <th className="px-3 py-2">N° Operación</th>
                     <th className="px-3 py-2">Canal</th>
                     <th className="px-3 py-2 text-right">Monto</th>
+                    <th className="px-3 py-2 text-center">Acciones</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-slate-700">
                   {contractPagos.length === 0 ? (
                     <tr>
-                      <td colSpan={5} className="px-4 py-5 text-center text-slate-400">
+                      <td colSpan={6} className="px-4 py-5 text-center text-slate-400">
                         No hay pagos adicionales registrados para este contrato.
                       </td>
                     </tr>
@@ -245,6 +277,26 @@ export const ContratoDetailModal: React.FC<ContratoDetailModalProps> = ({ contra
                         </td>
                         <td className="px-3 py-2 text-right font-medium text-slate-900">
                           S/ {Number(p.monto).toLocaleString('es-PE', { minimumFractionDigits: 2 })}
+                        </td>
+                        <td className="px-3 py-2 text-center whitespace-nowrap">
+                          <div className="flex items-center justify-center gap-1.5">
+                            <button
+                              onClick={() => setActiveVoucher(p)}
+                              className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded text-[11px] font-medium text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 border border-slate-200 transition-colors cursor-pointer"
+                              title="Ver Comprobante Voucher"
+                            >
+                              <Eye className="w-3 h-3 text-slate-500" />
+                              <span>Voucher</span>
+                            </button>
+                            <button
+                              onClick={() => setPagoToDelete(p)}
+                              className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded text-[11px] font-medium text-rose-700 hover:text-rose-800 bg-rose-50 hover:bg-rose-100 border border-rose-200 transition-colors cursor-pointer"
+                              title="Anular pago y revertir cuota"
+                            >
+                              <Trash2 className="w-3 h-3 text-rose-600" />
+                              <span>Anular</span>
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))
@@ -268,6 +320,91 @@ export const ContratoDetailModal: React.FC<ContratoDetailModalProps> = ({ contra
           </button>
         </div>
       </div>
+
+      {/* Confirmation Modal to Anular / Eliminar Pago */}
+      {pagoToDelete && (
+        <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs">
+          <div className="relative w-full max-w-md bg-white border border-slate-200 rounded-xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-rose-50/50">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-lg bg-rose-100 border border-rose-200 flex items-center justify-center text-rose-600">
+                  <AlertTriangle className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900">
+                    Anular y Eliminar Pago
+                  </h3>
+                  <p className="text-[11px] text-slate-500">
+                    Reversión de cuota en contrato {contrato.codigo_contrato}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => !isDeletingPago && setPagoToDelete(null)}
+                disabled={isDeletingPago}
+                className="p-1 text-slate-400 hover:text-slate-600 rounded-md hover:bg-slate-100 transition-colors cursor-pointer disabled:opacity-50"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4 text-xs">
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg space-y-2">
+                <div className="flex justify-between items-center text-slate-600">
+                  <span>N° Operación:</span>
+                  <span className="font-mono font-bold text-slate-900">{pagoToDelete.numero_operacion || 'S/N'}</span>
+                </div>
+                <div className="flex justify-between items-center text-slate-600">
+                  <span>Monto Abonado:</span>
+                  <span className="font-bold text-emerald-700 text-sm">
+                    S/ {Number(pagoToDelete.monto).toLocaleString('es-PE', { minimumFractionDigits: 2 })}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center text-slate-600">
+                  <span>Fecha:</span>
+                  <span className="text-slate-800">{pagoToDelete.fecha_pago}</span>
+                </div>
+                <div className="flex justify-between items-center text-slate-600">
+                  <span>Canal:</span>
+                  <span className="font-semibold text-slate-800">{pagoToDelete.metodo_pago}</span>
+                </div>
+              </div>
+
+              <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-amber-900 text-[11px] leading-relaxed space-y-1">
+                <div className="font-semibold flex items-center gap-1.5 text-amber-800">
+                  <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                  <span>Impacto directo en este contrato:</span>
+                </div>
+                <ul className="list-disc list-inside space-y-0.5 text-amber-800/90 pl-1">
+                  <li>Se eliminará el abono de la base de datos de Supabase.</li>
+                  <li>Se <b>restará la cuota pagada</b> de este cliente.</li>
+                  <li>Se <b>restaurará la deuda pendiente</b> por S/ {Number(pagoToDelete.monto).toLocaleString('es-PE', { minimumFractionDigits: 2 })}.</li>
+                </ul>
+              </div>
+
+              <div className="pt-2 flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setPagoToDelete(null)}
+                  disabled={isDeletingPago}
+                  className="px-3.5 py-2 bg-white hover:bg-slate-100 text-slate-700 rounded-lg border border-slate-200 text-xs font-medium cursor-pointer transition-colors disabled:opacity-50"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmDeletePago}
+                  disabled={isDeletingPago}
+                  className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white font-medium rounded-lg text-xs flex items-center gap-1.5 shadow-xs cursor-pointer transition-colors disabled:opacity-50"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>{isDeletingPago ? 'Anulando...' : 'Sí, Anular Pago'}</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

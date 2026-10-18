@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: ecosol-crm
+    runtime: static
+    buildCommand: npm run build
+    staticPublishPath: ./dist
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    envVars:
+      - key: VITE_SUPABASE_URL
+        value: https://agaeaaskhhudknbvncku.supabase.co
+      - key: VITE_SUPABASE_ANON_KEY
+        value: sb_publishable_Fu3eyGU3dOW5n3Q3WW-5og_zA2kcF8u

@@ -21,6 +21,8 @@ interface DataContextType {
   refreshContratos: () => Promise<void>;
   setContratos: React.Dispatch<React.SetStateAction<Contrato[]>>;
   pagos: Pago[];
+  loadingPagos: boolean;
+  refreshPagos: () => Promise<void>;
   egresos: Egreso[];
   loadingEgresos: boolean;
   egresosError: string | null;
@@ -30,6 +32,7 @@ interface DataContextType {
   loading: boolean;
   metrics: KPIMetrics;
   registrarAbono: (pagoData: Omit<Pago, 'id'> & { codigo_contrato?: string; propietario?: string }) => Promise<boolean>;
+  eliminarPago: (pagoId: number | string) => Promise<{ success: boolean; error?: string }>;
   registrarEgreso: (egresoData: Omit<Egreso, 'id'>) => Promise<{ success: boolean; error?: string }>;
   registrarCliente: (clienteData: Omit<Cliente, 'id'>) => Promise<Cliente | null>;
   registrarVenta: (params: RegistrarVentaParams) => Promise<boolean>;
@@ -59,6 +62,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loadingContratos, setLoadingContratos] = useState<boolean>(true);
   const [contratosError, setContratosError] = useState<string | null>(null);
   const [pagos, setPagos] = useState<Pago[]>([]);
+  const [loadingPagos, setLoadingPagos] = useState<boolean>(true);
   const [egresos, setEgresos] = useState<Egreso[]>([]);
   const [loadingEgresos, setLoadingEgresos] = useState<boolean>(true);
   const [egresosError, setEgresosError] = useState<string | null>(null);
@@ -91,7 +95,17 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setContratosError(null);
     }
     setLoadingContratos(false);
+    return res.data || [];
   }, []);
+
+  const fetchPagos = useCallback(async (currentContratos?: Contrato[]) => {
+    setLoadingPagos(true);
+    const res = await supabaseService.getPagos(currentContratos || contratos, cobranzas);
+    if (res.data) {
+      setPagos(res.data);
+    }
+    setLoadingPagos(false);
+  }, [contratos, cobranzas]);
 
   const fetchEgresos = useCallback(async () => {
     setLoadingEgresos(true);
@@ -110,29 +124,64 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const loadData = useCallback(async () => {
     setLoading(true);
 
+    // Clean old mock cache if it had small placeholder datasets & clear stale overrides
+    try {
+      localStorage.removeItem('ecosol_cobranzas_overrides');
+      const cachedPagos = localStorage.getItem('ecosol_pagos_cache');
+      if (cachedPagos) {
+        const parsed = JSON.parse(cachedPagos);
+        if (Array.isArray(parsed) && parsed.length < 50) {
+          localStorage.removeItem('ecosol_pagos_cache');
+        }
+      }
+    } catch {
+      // ignore
+    }
+
     // 1. Check live connection status
     const status = await supabaseService.checkConnection();
     setConnectionStatus(status);
 
-    // 2. Fetch live cobranzas from view v_control_cobranzas
-    const cobranzasList = await supabaseService.getCobranzas();
-    setCobranzas(cobranzasList);
-
-    // 3. Load relational base data (clientes, lotes, pagos, usuarios)
-    const relational = supabaseService.getInitialRelationalData();
-    setClientes(relational.clientes);
-    setLotes(relational.lotes);
-    setPagos(relational.pagos);
-    setUsuarios(relational.usuarios);
-
-    // 4. Load real egresos and real contratos directly from Supabase
-    await Promise.all([
-      fetchEgresos(),
-      fetchContratos()
+    // 2. Fetch live data from Supabase in parallel
+    const [cobranzasList, contratosRes, clientesRes, lotesRes, egresosRes] = await Promise.all([
+      supabaseService.getCobranzas(),
+      supabaseService.getContratos(),
+      supabaseService.getClientes(),
+      supabaseService.getLotes(),
+      supabaseService.getEgresos()
     ]);
 
+    setCobranzas(cobranzasList);
+
+    const loadedContratos = contratosRes.data || [];
+    setContratos(loadedContratos);
+    if (contratosRes.error) setContratosError(contratosRes.error);
+
+    if (clientesRes.data && clientesRes.data.length > 0) {
+      setClientes(clientesRes.data);
+    }
+    if (lotesRes.data && lotesRes.data.length > 0) {
+      setLotes(lotesRes.data);
+    }
+    if (egresosRes.data) {
+      setEgresos(egresosRes.data);
+    }
+    if (egresosRes.error) setEgresosError(egresosRes.error);
+
+    // 3. Fetch real payments from Supabase table 'pagos' (710 records) enriched with real contracts & collections
+    const pagosRes = await supabaseService.getPagos(loadedContratos, cobranzasList);
+    if (pagosRes.data) {
+      setPagos(pagosRes.data);
+    }
+
+    // 4. Load usuarios
+    setUsuarios(supabaseService.getUsuarios());
+
     setLoading(false);
-  }, [fetchEgresos, fetchContratos]);
+    setLoadingContratos(false);
+    setLoadingEgresos(false);
+    setLoadingPagos(false);
+  }, []);
 
   useEffect(() => {
     loadData();
@@ -241,9 +290,91 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }));
       }
 
+      // Re-fetch in background to keep Supabase state 100% synchronized
+      try {
+        await fetchPagos();
+        await fetchContratos();
+      } catch (err) {
+        console.warn('Background sync error:', err);
+      }
+
       return true;
     }
     return false;
+  };
+
+  const eliminarPago = async (pagoId: number | string): Promise<{ success: boolean; error?: string }> => {
+    // 1. Identify target pago BEFORE deleting to obtain amount and contract reference
+    const targetPago = pagos.find(p => String(p.id) === String(pagoId));
+
+    const res = await supabaseService.eliminarPago(pagoId);
+    if (res.success) {
+      // 2. Immediately remove from pagos state
+      setPagos(prev => prev.filter(p => String(p.id) !== String(pagoId)));
+
+      // 3. Immediately revert in cobranzas state (instant reactive UI update)
+      if (targetPago) {
+        setCobranzas(prev => prev.map(c => {
+          const isMatch = 
+            (targetPago.codigo_contrato && c.codigo_contrato === targetPago.codigo_contrato) ||
+            (targetPago.contrato_id && String(c.contrato_id) === String(targetPago.contrato_id));
+
+          if (isMatch) {
+            const montoCuota = Number(c.monto_cuota) || 1;
+            const cuotasARestar = Math.max(1, Math.round(Number(targetPago.monto) / montoCuota));
+            const nuevasPagadas = Math.max(0, Number(c.cuotas_pagadas) - cuotasARestar);
+            const nuevasPendientes = Math.min(Number(c.total_cuotas || 60), Number(c.cuotas_pendientes) + cuotasARestar);
+            const nuevoSaldo = Number(c.saldo_restante) + Number(targetPago.monto);
+            const proximaCuotaNum = nuevasPagadas + 1;
+            const nuevoEstadoCobranza: EstadoCobranza = nuevoSaldo === 0 ? 'LIQUIDADO' : 'AL DIA';
+
+            return {
+              ...c,
+              cuotas_pagadas: nuevasPagadas,
+              cuotas_pendientes: nuevasPendientes,
+              saldo_restante: nuevoSaldo,
+              proximo_numero_cuota: proximaCuotaNum,
+              estado_cobranza: nuevoEstadoCobranza,
+              estado: nuevoSaldo === 0 ? 'LIQUIDADO' : 'ACTIVO'
+            };
+          }
+          return c;
+        }));
+
+        // 4. Immediately revert in contratos state (instant reactive UI update)
+        setContratos(prev => prev.map(ctr => {
+          const isMatch = 
+            (targetPago.codigo_contrato && ctr.codigo_contrato === targetPago.codigo_contrato) ||
+            (targetPago.contrato_id && String(ctr.id) === String(targetPago.contrato_id));
+
+          if (isMatch) {
+            const montoCuota = Number(ctr.monto_cuota) || 1;
+            const cuotasARestar = Math.max(1, Math.round(Number(targetPago.monto) / montoCuota));
+            const nuevasPagadas = Math.max(0, Number(ctr.cuotas_pagadas_base || 0) - cuotasARestar);
+            const nuevoSaldo = Number(ctr.saldo_financiar || 0) + Number(targetPago.monto);
+            return {
+              ...ctr,
+              cuotas_pagadas_base: nuevasPagadas,
+              saldo_financiar: nuevoSaldo,
+              estado: nuevoSaldo === 0 ? 'LIQUIDADO' : 'ACTIVO'
+            };
+          }
+          return ctr;
+        }));
+      }
+
+      // 5. Re-fetch in background to keep all tables (contracts, cobranzas, pagos) 100% synchronized with Supabase
+      try {
+        await fetchPagos();
+        await fetchContratos();
+        const cobList = await supabaseService.getCobranzas();
+        setCobranzas(cobList);
+      } catch (err) {
+        console.warn('Background sync error after deleting pago:', err);
+      }
+      return { success: true };
+    }
+    return { success: false, error: res.error || 'No se pudo eliminar el pago' };
   };
 
   const registrarEgreso = async (egresoData: Omit<Egreso, 'id'>): Promise<{ success: boolean; error?: string }> => {
@@ -307,9 +438,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         contratos,
         loadingContratos,
         contratosError,
-        refreshContratos: fetchContratos,
+        refreshContratos: async () => { await fetchContratos(); },
         setContratos,
         pagos,
+        loadingPagos,
+        refreshPagos: async () => { await fetchPagos(); },
         egresos,
         loadingEgresos,
         egresosError,
@@ -319,6 +452,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         loading,
         metrics,
         registrarAbono,
+        eliminarPago,
         registrarEgreso,
         registrarCliente,
         registrarVenta,

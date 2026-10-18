@@ -37,8 +37,8 @@ interface DataContextType {
   registrarCliente: (clienteData: Omit<Cliente, 'id'>) => Promise<Cliente | null>;
   registrarVenta: (params: RegistrarVentaParams) => Promise<boolean>;
   getNextContractCode: () => string;
-  guardarUsuario: (usuario: UsuarioSistema) => void;
-  eliminarUsuario: (id: string) => void;
+  guardarUsuario: (usuario: UsuarioSistema) => Promise<void> | void;
+  eliminarUsuario: (id: string) => Promise<void> | void;
   refreshData: () => Promise<void>;
   selectedContractForPayment: ControlCobranza | null;
   setSelectedContractForPayment: (c: ControlCobranza | null) => void;
@@ -174,8 +174,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setPagos(pagosRes.data);
     }
 
-    // 4. Load usuarios
-    setUsuarios(supabaseService.getUsuarios());
+    // 4. Load usuarios from Supabase / cache
+    const loadedUsuarios = await supabaseService.getUsuarios();
+    setUsuarios(loadedUsuarios);
 
     setLoading(false);
     setLoadingContratos(false);
@@ -389,13 +390,13 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return { success: false, error: res.error || 'No se pudo guardar el gasto en Supabase.' };
   };
 
-  const guardarUsuario = (user: UsuarioSistema) => {
-    const updated = supabaseService.saveUsuario(user);
+  const guardarUsuario = async (user: UsuarioSistema) => {
+    const updated = await supabaseService.saveUsuario(user);
     setUsuarios(updated);
   };
 
-  const eliminarUsuario = (id: string) => {
-    const updated = supabaseService.deleteUsuario(id);
+  const eliminarUsuario = async (id: string) => {
+    const updated = await supabaseService.deleteUsuario(id);
     setUsuarios(updated);
   };
 

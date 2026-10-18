@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import { ControlCobranza, Pago, Egreso, Cliente, Lote, Contrato, UsuarioSistema, EstadoCobranza, FormaCompra, MetodoPago } from '../types/database';
+import { ControlCobranza, Pago, Egreso, Cliente, Lote, Contrato, UsuarioSistema, EstadoCobranza, FormaCompra, MetodoPago, EmpresaConfig, RolUsuario } from '../types/database';
 import { initialCobranzas, initialUsuarios, generateRelationalSeed } from './seedData';
 
 export const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://agaeaaskhhudknbvncku.supabase.co';
@@ -21,7 +21,8 @@ const STORAGE_KEYS = {
   CLIENTES: 'ecosol_clientes_cache',
   LOTES: 'ecosol_lotes_cache',
   USUARIOS: 'ecosol_usuarios_cache',
-  OVERRIDES: 'ecosol_cobranzas_overrides'
+  OVERRIDES: 'ecosol_cobranzas_overrides',
+  EMPRESA: 'ecosol_empresa_config'
 };
 
 export interface ConnectionStatus {
@@ -986,27 +987,162 @@ class SupabaseService {
     }
   }
 
-  // User Management
-  getUsuarios(): UsuarioSistema[] {
+  // Company Configuration - Cloud Supabase with Local Synchronized Cache
+  async getEmpresaConfig(): Promise<EmpresaConfig | null> {
+    try {
+      const { data, error } = await supabase
+        .from('configuracion_empresa')
+        .select('*')
+        .eq('id', 1)
+        .maybeSingle();
+
+      if (data) {
+        const config: EmpresaConfig = {
+          nombreEmpresa: data.nombre_empresa || 'ECOSOL INMOBILIARIA',
+          razonSocial: data.razon_social || '',
+          ruc: data.ruc || '',
+          direccion: data.direccion || '',
+          departamento: data.departamento || 'Ica',
+          provincia: data.provincia || 'Ica',
+          distrito: data.distrito || 'Ica',
+          telefono: data.telefono || '',
+          email: data.email || '',
+          logoUrl: data.logo_url || '/ecosol-logo.png',
+          representanteLegal: data.representante_legal || '',
+          dniRepresentante: data.dni_representante || '',
+          bancoPrincipal: data.banco_principal || '',
+          numeroCuenta: data.numero_cuenta || '',
+          cci: data.cci || '',
+          moneda: data.moneda || 'PEN',
+          mensajeWhatsApp: data.mensaje_whatsapp || '',
+          piePaginaVoucher: data.pie_pagina_voucher || ''
+        };
+        localStorage.setItem(STORAGE_KEYS.EMPRESA, JSON.stringify(config));
+        return config;
+      }
+    } catch (e) {
+      console.warn('Could not load configuracion_empresa from Supabase:', e);
+    }
+    const cached = localStorage.getItem(STORAGE_KEYS.EMPRESA);
+    return cached ? JSON.parse(cached) : null;
+  }
+
+  async saveEmpresaConfig(config: EmpresaConfig): Promise<boolean> {
+    localStorage.setItem(STORAGE_KEYS.EMPRESA, JSON.stringify(config));
+    try {
+      const { error } = await supabase
+        .from('configuracion_empresa')
+        .upsert([{
+          id: 1,
+          nombre_empresa: config.nombreEmpresa,
+          razon_social: config.razonSocial,
+          ruc: config.ruc,
+          direccion: config.direccion,
+          departamento: config.departamento,
+          provincia: config.provincia,
+          distrito: config.distrito,
+          telefono: config.telefono,
+          email: config.email,
+          logo_url: config.logoUrl,
+          representante_legal: config.representanteLegal,
+          dni_representante: config.dniRepresentante,
+          banco_principal: config.bancoPrincipal,
+          numero_cuenta: config.numeroCuenta,
+          cci: config.cci,
+          moneda: config.moneda,
+          mensaje_whatsapp: config.mensajeWhatsApp,
+          pie_pagina_voucher: config.piePaginaVoucher,
+          updated_at: new Date().toISOString()
+        }]);
+
+      if (error) {
+        console.warn('Warning saving configuracion_empresa to Supabase:', error.message);
+        return false;
+      }
+      return true;
+    } catch (e) {
+      console.warn('Exception saving configuracion_empresa to Supabase:', e);
+      return false;
+    }
+  }
+
+  // User Management - Cloud Supabase with Local Synchronized Cache
+  async getUsuarios(): Promise<UsuarioSistema[]> {
+    try {
+      const { data, error } = await supabase
+        .from('usuarios')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (data && data.length > 0) {
+        const normalized: UsuarioSistema[] = data.map((u: any) => ({
+          id: String(u.id),
+          nombre: u.nombre,
+          email: u.email,
+          password: u.password,
+          rol: u.rol as RolUsuario,
+          estado: u.estado as 'Activo' | 'Inactivo',
+          telefono: u.telefono || undefined,
+          avatar: u.avatar || undefined,
+          ultimo_acceso: u.ultimo_acceso || 'Nunca'
+        }));
+        localStorage.setItem(STORAGE_KEYS.USUARIOS, JSON.stringify(normalized));
+        return normalized;
+      }
+    } catch (e) {
+      console.warn('Could not query usuarios from Supabase:', e);
+    }
     const cached = localStorage.getItem(STORAGE_KEYS.USUARIOS);
     return cached ? JSON.parse(cached) : initialUsuarios;
   }
 
-  saveUsuario(user: UsuarioSistema): UsuarioSistema[] {
-    const current = this.getUsuarios();
-    const exists = current.some(u => u.id === user.id);
-    let updated: UsuarioSistema[];
-    if (exists) {
-      updated = current.map(u => (u.id === user.id ? user : u));
-    } else {
-      updated = [user, ...current];
+  async saveUsuario(user: UsuarioSistema): Promise<UsuarioSistema[]> {
+    try {
+      const { error } = await supabase
+        .from('usuarios')
+        .upsert([{
+          id: user.id,
+          nombre: user.nombre,
+          email: user.email,
+          password: user.password,
+          rol: user.rol,
+          estado: user.estado,
+          telefono: user.telefono,
+          avatar: user.avatar,
+          ultimo_acceso: user.ultimo_acceso
+        }]);
+      if (error) {
+        console.warn('Warning upserting usuario in Supabase:', error.message);
+      }
+    } catch (e) {
+      console.warn('Exception saving usuario in Supabase:', e);
     }
+
+    const cached = localStorage.getItem(STORAGE_KEYS.USUARIOS);
+    const current: UsuarioSistema[] = cached ? JSON.parse(cached) : initialUsuarios;
+    const exists = current.some(u => u.id === user.id);
+    const updated = exists 
+      ? current.map(u => (u.id === user.id ? user : u)) 
+      : [user, ...current];
     localStorage.setItem(STORAGE_KEYS.USUARIOS, JSON.stringify(updated));
     return updated;
   }
 
-  deleteUsuario(id: string): UsuarioSistema[] {
-    const current = this.getUsuarios();
+  async deleteUsuario(id: string): Promise<UsuarioSistema[]> {
+    try {
+      const { error } = await supabase
+        .from('usuarios')
+        .delete()
+        .eq('id', id);
+      if (error) {
+        console.warn('Warning deleting usuario in Supabase:', error.message);
+      }
+    } catch (e) {
+      console.warn('Exception deleting usuario in Supabase:', e);
+    }
+
+    const cached = localStorage.getItem(STORAGE_KEYS.USUARIOS);
+    const current: UsuarioSistema[] = cached ? JSON.parse(cached) : initialUsuarios;
     const updated = current.filter(u => u.id !== id);
     localStorage.setItem(STORAGE_KEYS.USUARIOS, JSON.stringify(updated));
     return updated;

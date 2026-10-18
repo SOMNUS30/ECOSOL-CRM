@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import { useData } from '../../context/DataContext';
 import { UsuarioSistema, RolUsuario } from '../../types/database';
 import { toast } from 'sonner';
@@ -15,7 +15,11 @@ import {
   Mail, 
   Clock, 
   User,
-  Lock
+  Lock,
+  Eye,
+  EyeOff,
+  Camera,
+  Loader2
 } from 'lucide-react';
 
 export const UsuariosModule: React.FC = () => {
@@ -31,9 +35,14 @@ export const UsuariosModule: React.FC = () => {
   // Form fields
   const [nombre, setNombre] = useState('');
   const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [avatar, setAvatar] = useState('');
   const [rol, setRol] = useState<RolUsuario>('Asesor de Ventas');
   const [estado, setEstado] = useState<'Activo' | 'Inactivo'>('Activo');
   const [telefono, setTelefono] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Filtered users
   const filteredUsuarios = useMemo(() => {
@@ -49,10 +58,65 @@ export const UsuariosModule: React.FC = () => {
     });
   }, [usuarios, selectedRole, searchTerm]);
 
+  const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      toast.error('Formato no válido', { description: 'Seleccione una imagen PNG, JPG o WEBP.' });
+      return;
+    }
+
+    if (file.size > 2 * 1024 * 1024) {
+      toast.error('Imagen demasiado pesada', { description: 'El tamaño máximo recomendado es de 2 MB.' });
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const maxSize = 256;
+        let width = img.width;
+        let height = img.height;
+
+        if (width > height) {
+          if (width > maxSize) {
+            height = Math.round((height * maxSize) / width);
+            width = maxSize;
+          }
+        } else {
+          if (height > maxSize) {
+            width = Math.round((width * maxSize) / height);
+            height = maxSize;
+          }
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(img, 0, 0, width, height);
+          const compressed = canvas.toDataURL('image/jpeg', 0.85);
+          setAvatar(compressed);
+          toast.success('Foto de perfil cargada');
+        } else {
+          setAvatar(event.target?.result as string);
+        }
+      };
+      img.src = event.target?.result as string;
+    };
+    reader.readAsDataURL(file);
+  };
+
   const handleOpenCreate = () => {
     setEditingUser(null);
     setNombre('');
     setEmail('');
+    setPassword('');
+    setShowPassword(false);
+    setAvatar('');
     setRol('Asesor de Ventas');
     setEstado('Activo');
     setTelefono('');
@@ -63,38 +127,54 @@ export const UsuariosModule: React.FC = () => {
     setEditingUser(user);
     setNombre(user.nombre);
     setEmail(user.email);
+    setPassword(user.password || '');
+    setShowPassword(false);
+    setAvatar(user.avatar || '');
     setRol(user.rol);
     setEstado(user.estado);
     setTelefono(user.telefono || '');
     setIsModalOpen(true);
   };
 
-  const handleSave = (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!nombre.trim() || !email.trim()) {
       toast.error('Complete todos los campos obligatorios');
       return;
     }
 
-    const userToSave: UsuarioSistema = {
-      id: editingUser ? editingUser.id : `usr-${Date.now()}`,
-      nombre: nombre.trim(),
-      email: email.trim(),
-      rol,
-      estado,
-      telefono: telefono.trim() || undefined,
-      ultimo_acceso: editingUser ? editingUser.ultimo_acceso : 'Nunca',
-      avatar: editingUser?.avatar || `https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=250`
-    };
+    if (!editingUser && !password.trim()) {
+      toast.error('Ingrese una contraseña para el nuevo usuario');
+      return;
+    }
 
-    guardarUsuario(userToSave);
-    toast.success(editingUser ? 'Usuario actualizado exitosamente' : 'Nuevo usuario registrado en el sistema');
-    setIsModalOpen(false);
+    setIsSaving(true);
+    try {
+      const userToSave: UsuarioSistema = {
+        id: editingUser ? editingUser.id : `usr-${Date.now()}`,
+        nombre: nombre.trim(),
+        email: email.trim().toLowerCase(),
+        password: password.trim() || editingUser?.password || '123456',
+        rol,
+        estado,
+        telefono: telefono.trim() || undefined,
+        ultimo_acceso: editingUser ? editingUser.ultimo_acceso : 'Nunca',
+        avatar: avatar.trim() || editingUser?.avatar || undefined
+      };
+
+      await guardarUsuario(userToSave);
+      toast.success(editingUser ? 'Usuario actualizado en la nube' : 'Nuevo usuario guardado en Supabase');
+      setIsModalOpen(false);
+    } catch {
+      toast.error('Error al guardar usuario en la base de datos');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
-  const handleDelete = (id: string, nombre: string) => {
+  const handleDelete = async (id: string, nombre: string) => {
     if (confirm(`¿Está seguro de eliminar el acceso para ${nombre}?`)) {
-      eliminarUsuario(id);
+      await eliminarUsuario(id);
       toast.info(`Usuario ${nombre} eliminado del sistema`);
     }
   };
@@ -325,9 +405,66 @@ export const UsuariosModule: React.FC = () => {
             </div>
 
             <form onSubmit={handleSave} className="space-y-3.5 text-xs">
+              {/* Profile Photo / Avatar Upload */}
+              <div className="flex items-center gap-3.5 p-3 bg-slate-50 border border-slate-200 rounded-lg">
+                <div className="relative group w-14 h-14 rounded-full bg-white border-2 border-dashed border-slate-300 flex items-center justify-center overflow-hidden flex-shrink-0 shadow-2xs">
+                  {avatar ? (
+                    <img src={avatar} alt="Avatar" className="w-full h-full object-cover" />
+                  ) : (
+                    <User className="w-6 h-6 text-slate-400" />
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    title="Cambiar foto de perfil"
+                    className="absolute inset-0 bg-slate-900/50 text-white opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity cursor-pointer"
+                  >
+                    <Camera className="w-4 h-4" />
+                  </button>
+                </div>
+
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold text-slate-800 text-xs">Foto del Colaborador</span>
+                    {avatar && (
+                      <span className="text-[10px] px-1.5 py-0.2 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded font-medium">Cargada</span>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-slate-500 mt-0.5">
+                    PNG, JPG o WEBP (máx. 2MB)
+                  </p>
+                  <div className="flex items-center gap-2 mt-1.5">
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      className="px-2.5 py-1 bg-white hover:bg-slate-100 border border-slate-200 rounded text-[11px] font-medium text-slate-700 flex items-center gap-1 cursor-pointer transition-colors shadow-2xs"
+                    >
+                      <Camera className="w-3 h-3 text-slate-500" />
+                      <span>{avatar ? 'Cambiar foto' : 'Subir foto'}</span>
+                    </button>
+                    {avatar && (
+                      <button
+                        type="button"
+                        onClick={() => setAvatar('')}
+                        className="px-2 py-1 text-[11px] text-rose-600 hover:text-rose-700 hover:bg-rose-50 rounded cursor-pointer transition-colors"
+                      >
+                        Quitar
+                      </button>
+                    )}
+                  </div>
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    onChange={handlePhotoUpload}
+                    accept="image/*"
+                    className="hidden"
+                  />
+                </div>
+              </div>
+
               <div>
                 <label className="block text-slate-700 mb-1 font-medium text-[11px]">
-                  Nombre Completo
+                  Nombre Completo <span className="text-rose-500">*</span>
                 </label>
                 <input
                   type="text"
@@ -341,16 +478,52 @@ export const UsuariosModule: React.FC = () => {
 
               <div>
                 <label className="block text-slate-700 mb-1 font-medium text-[11px]">
-                  Correo Electrónico
+                  Correo Electrónico (Login) <span className="text-rose-500">*</span>
                 </label>
-                <input
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="ejemplo@ecosol.pe"
-                  className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-slate-800 placeholder-slate-400 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500"
-                  required
-                />
+                <div className="relative">
+                  <Mail className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5" />
+                  <input
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="ejemplo@ecosol.pe"
+                    className="w-full pl-9 pr-3 py-2 bg-white border border-slate-200 rounded-lg text-slate-800 placeholder-slate-400 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                    required
+                  />
+                </div>
+              </div>
+
+              {/* Password field with show/hide toggle */}
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-slate-700 font-medium text-[11px]">
+                    Contraseña de Acceso {!editingUser && <span className="text-rose-500">*</span>}
+                  </label>
+                  {editingUser && (
+                    <span className="text-[10px] text-slate-400">
+                      (Dejar en blanco para conservar actual)
+                    </span>
+                  )}
+                </div>
+                <div className="relative">
+                  <Lock className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5" />
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder={editingUser ? '••••••••' : 'Ej: Ecosol2026!'}
+                    className="w-full pl-9 pr-9 py-2 bg-white border border-slate-200 rounded-lg text-slate-800 placeholder-slate-400 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                    required={!editingUser}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    tabIndex={-1}
+                    className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600 cursor-pointer"
+                  >
+                    {showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                  </button>
+                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-2.5">
@@ -401,15 +574,18 @@ export const UsuariosModule: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setIsModalOpen(false)}
-                  className="px-3.5 py-1.5 bg-white hover:bg-slate-100 text-slate-700 rounded-lg border border-slate-200 text-xs font-medium cursor-pointer"
+                  disabled={isSaving}
+                  className="px-3.5 py-1.5 bg-white hover:bg-slate-100 text-slate-700 rounded-lg border border-slate-200 text-xs font-medium cursor-pointer transition-colors"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
-                  className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-medium rounded-lg text-xs shadow-xs transition-colors cursor-pointer"
+                  disabled={isSaving}
+                  className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-medium rounded-lg text-xs shadow-xs transition-colors cursor-pointer flex items-center gap-1.5 disabled:opacity-60"
                 >
-                  {editingUser ? 'Guardar Cambios' : 'Registrar'}
+                  {isSaving && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                  <span>{editingUser ? 'Guardar Cambios' : 'Registrar Colaborador'}</span>
                 </button>
               </div>
             </form>

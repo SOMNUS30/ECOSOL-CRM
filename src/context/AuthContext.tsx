@@ -99,32 +99,102 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     try {
-      const { data, error: sbError } = await supabase.auth.signInWithPassword({
-        email,
-        password: pass
-      });
+      // 1. Try Supabase Auth
+      try {
+        const { data, error: sbError } = await supabase.auth.signInWithPassword({
+          email: email.trim(),
+          password: pass
+        });
 
-      if (sbError) {
-        const msg = sbError.message === 'Invalid login credentials' 
-          ? 'Credenciales inválidas. Compruebe el correo y la contraseña, o utilice el botón de ingreso rápido Demo.'
-          : sbError.message;
-        setError(msg);
-        return { success: false, error: msg };
+        if (!sbError && data?.user) {
+          const authUser: UsuarioAuth = {
+            id: data.user.id,
+            email: data.user.email || email,
+            nombres: data.user.user_metadata?.nombres || email.split('@')[0].toUpperCase(),
+            rol: (data.user.user_metadata?.rol as RolUsuario) || 'Administrador',
+            avatar: data.user.user_metadata?.avatar
+          };
+          setUser(authUser);
+          localStorage.removeItem('ecosol_auth_demo');
+          return { success: true };
+        }
+      } catch (authErr) {
+        console.warn('Supabase Auth error, trying database usuarios table:', authErr);
       }
 
-      if (data.user) {
-        const authUser: UsuarioAuth = {
-          id: data.user.id,
-          email: data.user.email || email,
-          nombres: data.user.user_metadata?.nombres || email.split('@')[0].toUpperCase(),
-          rol: (data.user.user_metadata?.rol as RolUsuario) || 'Administrador'
-        };
-        setUser(authUser);
-        localStorage.removeItem('ecosol_auth_demo');
-        return { success: true };
+      // 2. Query Supabase table 'usuarios' (for team members created in CRM)
+      try {
+        const { data: dbUser } = await supabase
+          .from('usuarios')
+          .select('*')
+          .ilike('email', email.trim())
+          .maybeSingle();
+
+        if (dbUser) {
+          if (dbUser.estado === 'Inactivo') {
+            const err = 'La cuenta de este colaborador está inactiva. Comuníquese con administración.';
+            setError(err);
+            return { success: false, error: err };
+          }
+
+          const expectedPass = dbUser.password || '123456';
+          if (expectedPass === pass) {
+            const authUser: UsuarioAuth = {
+              id: dbUser.id,
+              email: dbUser.email,
+              nombres: dbUser.nombre,
+              rol: dbUser.rol as RolUsuario,
+              avatar: dbUser.avatar || undefined
+            };
+            setUser(authUser);
+            localStorage.setItem('ecosol_auth_demo', JSON.stringify(authUser));
+            return { success: true };
+          } else {
+            const err = 'Contraseña incorrecta. Por favor intente nuevamente.';
+            setError(err);
+            return { success: false, error: err };
+          }
+        }
+      } catch (dbErr) {
+        console.warn('Error querying public.usuarios in Supabase:', dbErr);
       }
 
-      return { success: false, error: 'No se pudo iniciar sesión.' };
+      // 3. Fallback to cached usuarios in localStorage
+      const cached = localStorage.getItem('ecosol_usuarios_cache');
+      if (cached) {
+        try {
+          const list: any[] = JSON.parse(cached);
+          const found = list.find((u: any) => u.email?.toLowerCase() === email.trim().toLowerCase());
+          if (found) {
+            if (found.estado === 'Inactivo') {
+              const err = 'La cuenta de este colaborador está inactiva.';
+              setError(err);
+              return { success: false, error: err };
+            }
+            const expected = found.password || '123456';
+            if (expected === pass) {
+              const authUser: UsuarioAuth = {
+                id: found.id,
+                email: found.email,
+                nombres: found.nombre,
+                rol: found.rol as RolUsuario,
+                avatar: found.avatar
+              };
+              setUser(authUser);
+              localStorage.setItem('ecosol_auth_demo', JSON.stringify(authUser));
+              return { success: true };
+            } else {
+              const err = 'Contraseña incorrecta. Por favor intente nuevamente.';
+              setError(err);
+              return { success: false, error: err };
+            }
+          }
+        } catch {}
+      }
+
+      const msg = 'Credenciales no encontradas. Compruebe el correo y la contraseña, o use los accesos de prueba Demo.';
+      setError(msg);
+      return { success: false, error: msg };
     } catch (err: any) {
       const msg = err.message || 'Error de conexión con el servicio de autenticación.';
       setError(msg);

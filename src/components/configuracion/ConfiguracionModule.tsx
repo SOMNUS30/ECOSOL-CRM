@@ -69,13 +69,38 @@ export const ConfiguracionModule: React.FC = () => {
 
     const reader = new FileReader();
     reader.onload = (event) => {
-      const base64 = event.target?.result as string;
-      if (base64) {
-        handleChange('logoUrl', base64);
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const maxDim = 500;
+        let width = img.width;
+        let height = img.height;
+
+        if (width > maxDim || height > maxDim) {
+          if (width > height) {
+            height = Math.round((height * maxDim) / width);
+            width = maxDim;
+          } else {
+            width = Math.round((width * maxDim) / height);
+            height = maxDim;
+          }
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(img, 0, 0, width, height);
+          const base64 = canvas.toDataURL('image/png');
+          handleChange('logoUrl', base64);
+        } else {
+          handleChange('logoUrl', event.target?.result as string);
+        }
         toast.success('Logotipo cargado', {
-          description: 'Haga clic en "Guardar Cambios" para aplicar en todo el sistema.'
+          description: 'Haga clic en "Guardar Cambios" para sincronizar en la nube para todos los usuarios.'
         });
-      }
+      };
+      img.src = event.target?.result as string;
     };
     reader.readAsDataURL(file);
   };
@@ -89,7 +114,7 @@ export const ConfiguracionModule: React.FC = () => {
     toast.success('URL de logo asignada');
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     setIsSaving(true);
     
     // Quick validation
@@ -103,19 +128,24 @@ export const ConfiguracionModule: React.FC = () => {
       toast.warning('Aviso sobre RUC', { description: 'El número de RUC en Perú generalmente contiene 11 dígitos.' });
     }
 
-    updateEmpresaConfig(formData);
-    setTimeout(() => {
-      setIsSaving(false);
-      toast.success('Configuración guardada exitosamente', {
-        description: 'Los cambios se han aplicado al Sidebar, Vouchers, Recibos y WhatsApp.',
+    try {
+      await updateEmpresaConfig(formData);
+      toast.success('Configuración guardada en la nube', {
+        description: 'El nombre, logo y datos fiscales se han sincronizado en Supabase para todos los usuarios.',
         duration: 4000
       });
-    }, 400);
+    } catch {
+      toast.error('Error al sincronizar en la nube', {
+        description: 'Se guardó en la memoria local.'
+      });
+    } finally {
+      setIsSaving(false);
+    }
   };
 
-  const handleReset = () => {
+  const handleReset = async () => {
     if (window.confirm('¿Está seguro de que desea restablecer los datos de la empresa a los valores por defecto?')) {
-      resetEmpresaConfig();
+      await resetEmpresaConfig();
       toast.info('Valores restablecidos a configuración de fábrica.');
     }
   };

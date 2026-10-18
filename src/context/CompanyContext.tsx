@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { EmpresaConfig } from '../types/database';
+import { supabaseService } from '../services/supabase';
 
 export const DEFAULT_EMPRESA_CONFIG: EmpresaConfig = {
   nombreEmpresa: 'ECOSOL INMOBILIARIA',
@@ -26,8 +27,8 @@ const STORAGE_KEY = 'ecosol_empresa_config';
 
 interface CompanyContextType {
   empresaConfig: EmpresaConfig;
-  updateEmpresaConfig: (updates: Partial<EmpresaConfig>) => void;
-  resetEmpresaConfig: () => void;
+  updateEmpresaConfig: (updates: Partial<EmpresaConfig>) => Promise<void>;
+  resetEmpresaConfig: () => Promise<void>;
   buildWhatsAppMessage: (data: {
     cliente: string;
     cuota: number | string;
@@ -54,25 +55,39 @@ export const CompanyProvider: React.FC<{ children: React.ReactNode }> = ({ child
     return DEFAULT_EMPRESA_CONFIG;
   });
 
-  const updateEmpresaConfig = (updates: Partial<EmpresaConfig>) => {
-    setEmpresaConfig(prev => {
-      const updated = { ...prev, ...updates };
-      try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
-      } catch (e) {
-        console.error('Error saving empresa config to localStorage:', e);
+  // Pull live configuration from Supabase on mount
+  useEffect(() => {
+    supabaseService.getEmpresaConfig().then((cloudConfig) => {
+      if (cloudConfig) {
+        setEmpresaConfig(cloudConfig);
+        try {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(cloudConfig));
+        } catch {}
       }
-      return updated;
     });
+  }, []);
+
+  const updateEmpresaConfig = async (updates: Partial<EmpresaConfig>) => {
+    const updated = { ...empresaConfig, ...updates };
+    setEmpresaConfig(updated);
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+    } catch (e) {
+      console.error('Error saving empresa config to localStorage:', e);
+    }
+
+    // Persist to Supabase in the cloud for all users
+    await supabaseService.saveEmpresaConfig(updated);
   };
 
-  const resetEmpresaConfig = () => {
+  const resetEmpresaConfig = async () => {
     setEmpresaConfig(DEFAULT_EMPRESA_CONFIG);
     try {
-      localStorage.removeItem(STORAGE_KEY);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(DEFAULT_EMPRESA_CONFIG));
     } catch (e) {
-      console.error('Error removing empresa config from localStorage:', e);
+      console.error('Error resetting empresa config in localStorage:', e);
     }
+    await supabaseService.saveEmpresaConfig(DEFAULT_EMPRESA_CONFIG);
   };
 
   const buildWhatsAppMessage = (data: {

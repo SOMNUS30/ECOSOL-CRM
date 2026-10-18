@@ -24,6 +24,7 @@ export interface UsuarioSistema {
   id: string;
   nombre: string;
   email: string;
+  password?: string;
   rol: RolUsuario;
   estado: 'Activo' | 'Inactivo';
   ultimo_acceso: string;

@@ -122,7 +122,18 @@ export function App() {
             <MainAppContent />
             <Toaster
               position="top-right"
-              richColors
+              toastOptions={{
+                duration: 3500,
+                style: {
+                  background: '#ffffff',
+                  color: '#0f172a',
+                  border: '1px solid #e2e8f0',
+                  boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.08), 0 4px 6px -4px rgba(0, 0, 0, 0.05)',
+                  borderRadius: '0.75rem',
+                  fontSize: '0.8125rem',
+                  fontWeight: 500
+                }
+              }}
             />
           </DataProvider>
         </AuthProvider>

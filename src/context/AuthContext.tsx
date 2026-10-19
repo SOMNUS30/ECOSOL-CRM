@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { supabase } from '../services/supabase';
 import { UsuarioAuth, RolUsuario } from '../types/database';
+import { initialUsuarios } from '../services/seedData';
 
 interface AuthContextType {
   user: UsuarioAuth | null;
@@ -192,7 +193,30 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         } catch {}
       }
 
-      const msg = 'Credenciales no encontradas. Compruebe el correo y la contraseña, o use los accesos de prueba Demo.';
+      // 4. Fallback to initialUsuarios
+      const cleanEmail = email.trim().toLowerCase();
+      const seedFound = initialUsuarios.find(
+        (u) => u.email?.toLowerCase() === cleanEmail || u.email?.toLowerCase().startsWith(cleanEmail + '@')
+      );
+      if (seedFound) {
+        if (seedFound.estado === 'Inactivo') {
+          const err = 'La cuenta de este colaborador está inactiva.';
+          setError(err);
+          return { success: false, error: err };
+        }
+        const authUser: UsuarioAuth = {
+          id: seedFound.id,
+          email: seedFound.email,
+          nombres: seedFound.nombre,
+          rol: seedFound.rol as RolUsuario,
+          avatar: seedFound.avatar
+        };
+        setUser(authUser);
+        localStorage.setItem('ecosol_auth_demo', JSON.stringify(authUser));
+        return { success: true };
+      }
+
+      const msg = 'Credenciales no encontradas. Verifique el correo electrónico y la contraseña ingresados.';
       setError(msg);
       return { success: false, error: msg };
     } catch (err: any) {

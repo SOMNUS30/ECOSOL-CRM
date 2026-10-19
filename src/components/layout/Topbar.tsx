@@ -25,7 +25,7 @@ export const Topbar: React.FC = () => {
       <div className="flex items-center gap-3">
         <div className="flex items-center gap-2 px-2.5 py-1 rounded-md bg-emerald-50 border border-emerald-200 text-xs text-emerald-800">
           <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-          <span className="font-semibold">Supabase PostgreSQL Live</span>
+          <span className="font-semibold">Sistema en Línea</span>
           <span className="text-emerald-400">•</span>
           <span className="text-emerald-700 font-normal">{connectionStatus.totalRecords} contratos sincronizados</span>
         </div>

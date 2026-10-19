@@ -131,30 +131,38 @@ export function generateRelationalSeed() {
 
   const seenLoteKey = new Set<string>();
 
+  // Cache clients by DNI to preserve multiple lots per client
+  const clientByDni = new Map<string, Cliente>();
+  let nextClientId = 1;
+
   // Process live contracts
   initialCobranzas.forEach((c, index) => {
-    const clienteId = index + 1;
-    const loteId = index + 1;
+    const contractId = c.contrato_id ? Number(c.contrato_id) : (index + 1);
+    const loteId = contractId;
     const cleanMz = (c.manzana || 'A').toUpperCase().trim();
     const cleanLt = String(c.numero_lote || '1').trim();
     const loteKey = `${c.etapa}-${cleanMz}-${cleanLt}`;
     seenLoteKey.add(loteKey);
 
-    // Cliente
-    const emailName = c.propietario.toLowerCase().replace(/[^a-z0-9]/g, '.').replace(/\.+/g, '.').slice(0, 18);
-    const distrito = distritos[index % distritos.length];
-    const cliente: Cliente = {
-      id: clienteId,
-      dni: c.dni,
-      nombres_apellidos: c.propietario,
-      telefono: c.telefono,
-      correo: `${emailName}@gmail.com`,
-      direccion: `Av. Los Libertadores #${100 + (index * 7) % 890}`,
-      distrito: distrito,
-      provincia: 'Ica',
-      departamento: 'Ica'
-    };
-    clientes.push(cliente);
+    // Cliente (deduplicate so clients with multiple contracts share the same client identity)
+    let cliente = clientByDni.get(c.dni);
+    if (!cliente) {
+      const emailName = c.propietario.toLowerCase().replace(/[^a-z0-9]/g, '.').replace(/\.+/g, '.').slice(0, 18);
+      const distrito = distritos[index % distritos.length];
+      cliente = {
+        id: nextClientId++,
+        dni: c.dni,
+        nombres_apellidos: c.propietario,
+        telefono: c.telefono,
+        correo: `${emailName}@gmail.com`,
+        direccion: `Av. Los Libertadores #${100 + (index * 7) % 890}`,
+        distrito: distrito,
+        provincia: 'Ica',
+        departamento: 'Ica'
+      };
+      clientByDni.set(c.dni, cliente);
+      clientes.push(cliente);
+    }
 
     // Lote
     const loteEstado = c.estado === 'DESISTIDO' ? 'DESISTIDO' : 'VENDIDO';
@@ -171,8 +179,6 @@ export function generateRelationalSeed() {
     lotes.push(lote);
 
     // Contrato
-    // Make 10 of the active contracts "CONTADO" to satisfy MÓDULO 3 requirement:
-    // "Regla de negocio para VENTAS AL CONTADO: Deben reflejarse con Saldo S/ 0.00, cuotas pendientes 0 y badge destacado en verde esmeralda 'LIQUIDADO'"
     const isContado = (index % 12 === 0 && c.estado !== 'DESISTIDO');
     const formaCompra = isContado ? 'CONTADO' : 'CREDITO';
     const contratoEstado = isContado ? 'LIQUIDADO' : (c.estado === 'DESISTIDO' ? 'DESISTIDO' : 'ACTIVO');
@@ -183,9 +189,9 @@ export function generateRelationalSeed() {
     const montoCuota = isContado ? 0 : Number(c.monto_cuota || 150);
 
     const contrato: Contrato = {
-      id: clienteId,
+      id: contractId,
       codigo_contrato: c.codigo_contrato,
-      cliente_id: clienteId,
+      cliente_id: cliente.id,
       lote_id: loteId,
       asesor: asesores[index % asesores.length],
       mes_contrato: `2024-${String((index % 12) + 1).padStart(2, '0')}`,
@@ -206,11 +212,11 @@ export function generateRelationalSeed() {
 
     // Initial payment
     pagos.push({
-      id: `PAG-INI-${clienteId}`,
-      contrato_id: clienteId,
+      id: `PAG-INI-${contractId}`,
+      contrato_id: contractId,
       tipo_pago: isContado ? 'AL CONTADO' : 'INICIAL',
       monto: montoInicial,
-      numero_operacion: `OP-INI-${700000 + clienteId}`,
+      numero_operacion: `OP-INI-${700000 + contractId}`,
       metodo_pago: metodos[index % metodos.length],
       fecha_pago: '2024-01-10',
       codigo_contrato: c.codigo_contrato,
@@ -221,11 +227,11 @@ export function generateRelationalSeed() {
     const cuotasToGenerate = Math.min(cuotasPagadas, 3);
     for (let k = 1; k <= cuotasToGenerate; k++) {
       pagos.push({
-        id: `PAG-CUO-${clienteId}-${k}`,
-        contrato_id: clienteId,
+        id: `PAG-CUO-${contractId}-${k}`,
+        contrato_id: contractId,
         tipo_pago: 'CUOTA',
         monto: montoCuota,
-        numero_operacion: `OP-${800000 + clienteId * 10 + k}`,
+        numero_operacion: `OP-${800000 + contractId * 10 + k}`,
         metodo_pago: metodos[(index + k) % metodos.length],
         fecha_pago: `2026-${String(Math.max(1, 10 - k)).padStart(2, '0')}-15`,
         codigo_contrato: c.codigo_contrato,

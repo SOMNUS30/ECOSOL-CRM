@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Contrato, Pago } from '../../types/database';
 import { useData } from '../../context/DataContext';
 import { toast } from 'sonner';
@@ -12,7 +12,9 @@ import {
   Eye,
   Trash2,
   AlertTriangle,
-  AlertCircle
+  AlertCircle,
+  Layers,
+  CheckCircle2
 } from 'lucide-react';
 
 interface ContratoDetailModalProps {
@@ -20,22 +22,52 @@ interface ContratoDetailModalProps {
   onClose: () => void;
 }
 
-export const ContratoDetailModal: React.FC<ContratoDetailModalProps> = ({ contrato, onClose }) => {
-  const { pagos, setSelectedContractForPayment, cobranzas, eliminarPago, setActiveVoucher } = useData();
+export const ContratoDetailModal: React.FC<ContratoDetailModalProps> = ({ contrato: initialContrato, onClose }) => {
+  const { pagos, setSelectedContractForPayment, cobranzas, eliminarPago, setActiveVoucher, contratos, setSelectedContractDetail } = useData();
+  const [contrato, setContrato] = useState<Contrato | null>(initialContrato);
   const [pagoToDelete, setPagoToDelete] = useState<Pago | null>(null);
   const [isDeletingPago, setIsDeletingPago] = useState<boolean>(false);
 
+  useEffect(() => {
+    setContrato(initialContrato);
+  }, [initialContrato]);
+
   if (!contrato) return null;
 
-  // Payments matching this contract
-  const contractPagos = pagos.filter(
-    p => p.codigo_contrato === contrato.codigo_contrato || String(p.contrato_id) === String(contrato.id)
-  );
+  // Payments matching specifically this contract/lote
+  const contractPagos = useMemo(() => {
+    return pagos.filter(
+      p => String(p.contrato_id) === String(contrato.id) ||
+           (p.codigo_contrato && p.codigo_contrato === contrato.codigo_contrato)
+    );
+  }, [pagos, contrato.id, contrato.codigo_contrato]);
 
   const isContado = contrato.forma_compra === 'CONTADO' || contrato.estado === 'LIQUIDADO';
   const cliente = contrato.cliente || (contrato as any).clientes;
   const lote = contrato.lote || (contrato as any).lotes;
   const matchCobranza = cobranzas.find(c => c.codigo_contrato === contrato.codigo_contrato);
+
+  // Find all contracts belonging to this client across all contracts in the system
+  const clientContracts = useMemo(() => {
+    const dni = cliente?.dni;
+    const clId = contrato.cliente_id;
+    const nombre = (cliente?.nombres_apellidos || '').trim().toLowerCase();
+
+    const matches = contratos.filter(c => {
+      const cCli = c.cliente || (c as any).clientes;
+      if (dni && cCli?.dni && cCli.dni === dni) return true;
+      if (clId && c.cliente_id && String(c.cliente_id) === String(clId)) return true;
+      if (nombre && cCli?.nombres_apellidos && cCli.nombres_apellidos.trim().toLowerCase() === nombre) return true;
+      return String(c.id) === String(contrato.id);
+    });
+
+    return matches.length > 0 ? matches : [contrato];
+  }, [contratos, cliente?.dni, cliente?.nombres_apellidos, contrato.cliente_id, contrato.id]);
+
+  const handleSelectContract = (c: Contrato) => {
+    setContrato(c);
+    setSelectedContractDetail(c);
+  };
 
   const handleOpenAbonar = () => {
     if (matchCobranza) {
@@ -43,6 +75,10 @@ export const ContratoDetailModal: React.FC<ContratoDetailModalProps> = ({ contra
       setSelectedContractForPayment(matchCobranza);
     }
   };
+
+  const totalAbonadoLote = useMemo(() => {
+    return contractPagos.reduce((acc, p) => acc + Number(p.monto || 0), 0);
+  }, [contractPagos]);
 
   const handleConfirmDeletePago = async () => {
     if (!pagoToDelete) return;
@@ -82,6 +118,10 @@ export const ContratoDetailModal: React.FC<ContratoDetailModalProps> = ({ contra
                 <h2 className="text-sm font-bold text-slate-900">
                   Expediente de Contrato: {contrato.codigo_contrato}
                 </h2>
+                <span className="text-xs text-slate-400">•</span>
+                <span className="text-xs font-semibold text-slate-700">
+                  Mz {lote?.manzana || '-'} Lt {lote?.numero_lote || '-'}
+                </span>
                 {isContado ? (
                   <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-blue-50 text-blue-700 border border-blue-200">
                     Liquidado
@@ -108,13 +148,63 @@ export const ContratoDetailModal: React.FC<ContratoDetailModalProps> = ({ contra
 
         {/* Scrollable Content */}
         <div className="p-5 overflow-y-auto space-y-4 text-xs text-slate-700">
+          {/* Multilot Selector Banner when client owns multiple lots */}
+          {clientContracts.length > 1 && (
+            <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 text-xs">
+                <div className="flex items-center gap-1.5 font-bold text-slate-900">
+                  <Layers className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span>Lotes de este cliente ({clientContracts.length} contratos independientes):</span>
+                </div>
+                <span className="text-[11px] text-slate-500">
+                  Seleccione un lote para ver su ficha y cuotas independientes
+                </span>
+              </div>
+              <div className="flex flex-wrap gap-1.5 pt-1">
+                {clientContracts.map(c => {
+                  const isCurrent = String(c.id) === String(contrato.id) || c.codigo_contrato === contrato.codigo_contrato;
+                  const cLote = c.lote || (c as any).lotes;
+                  const cPagosCount = pagos.filter(p => String(p.contrato_id) === String(c.id) || p.codigo_contrato === c.codigo_contrato).length;
+                  return (
+                    <button
+                      key={c.id}
+                      type="button"
+                      onClick={() => handleSelectContract(c)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer flex items-center gap-2 border ${
+                        isCurrent
+                          ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                          : 'bg-white text-slate-700 hover:bg-slate-100 hover:text-slate-900 border-slate-200'
+                      }`}
+                    >
+                      <span className="font-mono font-bold">{c.codigo_contrato}</span>
+                      <span className={isCurrent ? 'text-emerald-200' : 'text-slate-300'}>•</span>
+                      <span>Mz {cLote?.manzana || '-'} Lt {cLote?.numero_lote || '-'}</span>
+                      <span className={`px-1.5 py-0.5 rounded text-[10px] font-mono ${
+                        isCurrent ? 'bg-emerald-700 text-white' : 'bg-slate-100 text-slate-600'
+                      }`}>
+                        {cPagosCount} {cPagosCount === 1 ? 'pago' : 'pagos'}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           {/* Top Dossier: Cliente + Lote */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {/* Ficha del Cliente */}
             <div className="p-3.5 rounded-lg bg-slate-50 border border-slate-200 space-y-2">
-              <div className="flex items-center gap-1.5 pb-2 border-b border-slate-200 text-slate-800 font-semibold text-xs">
-                <User className="w-3.5 h-3.5 text-slate-500" />
-                <span>Datos del Propietario</span>
+              <div className="flex items-center justify-between pb-2 border-b border-slate-200 text-slate-800 font-semibold text-xs">
+                <div className="flex items-center gap-1.5">
+                  <User className="w-3.5 h-3.5 text-slate-500" />
+                  <span>Datos del Propietario</span>
+                </div>
+                {clientContracts.length > 1 && (
+                  <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
+                    {clientContracts.length} lotes adquiridos
+                  </span>
+                )}
               </div>
               <div>
                 <span className="text-slate-500 block text-[11px]">Nombres y Apellidos</span>
@@ -123,7 +213,7 @@ export const ContratoDetailModal: React.FC<ContratoDetailModalProps> = ({ contra
               <div className="grid grid-cols-2 gap-2">
                 <div>
                   <span className="text-slate-500 block text-[11px]">DNI</span>
-                  <span className="text-slate-800 font-medium">{cliente?.dni || '-'}</span>
+                  <span className="text-slate-800 font-medium font-mono">{cliente?.dni || '-'}</span>
                 </div>
                 <div>
                   <span className="text-slate-500 block text-[11px]">Teléfono</span>
@@ -144,9 +234,14 @@ export const ContratoDetailModal: React.FC<ContratoDetailModalProps> = ({ contra
 
             {/* Ficha del Lote */}
             <div className="p-3.5 rounded-lg bg-slate-50 border border-slate-200 space-y-2">
-              <div className="flex items-center gap-1.5 pb-2 border-b border-slate-200 text-slate-800 font-semibold text-xs">
-                <Building2 className="w-3.5 h-3.5 text-slate-500" />
-                <span>Datos del Inmueble</span>
+              <div className="flex items-center justify-between pb-2 border-b border-slate-200 text-slate-800 font-semibold text-xs">
+                <div className="flex items-center gap-1.5">
+                  <Building2 className="w-3.5 h-3.5 text-slate-500" />
+                  <span>Datos de este Inmueble</span>
+                </div>
+                <span className="font-mono text-[11px] font-bold text-slate-700">
+                  Contrato {contrato.codigo_contrato}
+                </span>
               </div>
               <div className="grid grid-cols-3 gap-2">
                 <div>
@@ -155,11 +250,11 @@ export const ContratoDetailModal: React.FC<ContratoDetailModalProps> = ({ contra
                 </div>
                 <div>
                   <span className="text-slate-500 block text-[11px]">Manzana</span>
-                  <span className="text-slate-900 font-medium">Mz {lote?.manzana || '-'}</span>
+                  <span className="text-slate-900 font-bold text-emerald-800 font-mono">Mz {lote?.manzana || '-'}</span>
                 </div>
                 <div>
                   <span className="text-slate-500 block text-[11px]">Lote</span>
-                  <span className="text-slate-900 font-medium">Lt {lote?.numero_lote || '-'}</span>
+                  <span className="text-slate-900 font-bold text-emerald-800 font-mono">Lt {lote?.numero_lote || '-'}</span>
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-2 pt-1">
@@ -180,7 +275,7 @@ export const ContratoDetailModal: React.FC<ContratoDetailModalProps> = ({ contra
                   </span>
                 </div>
                 <div>
-                  <span className="text-slate-500 block text-[11px]">Cantidad de Cuotas</span>
+                  <span className="text-slate-500 block text-[11px]">Plan de Cuotas</span>
                   <span className="text-slate-800 font-medium block mt-0.5">
                     {isContado ? '1 cuota (Contado)' : `${contrato.cantidad_cuotas} cuotas`}
                   </span>
@@ -223,21 +318,27 @@ export const ContratoDetailModal: React.FC<ContratoDetailModalProps> = ({ contra
             </div>
           </div>
 
+
           {/* Chronological Payment History Table */}
           <div className="space-y-2.5">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-1.5">
-                <CreditCard className="w-3.5 h-3.5 text-slate-500" />
-                <h3 className="font-semibold text-slate-800 text-xs">
-                  Historial de Pagos ({contractPagos.length})
-                </h3>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div className="space-y-0.5">
+                <div className="flex items-center gap-1.5">
+                  <CreditCard className="w-3.5 h-3.5 text-slate-500" />
+                  <h3 className="font-semibold text-slate-800 text-xs">
+                    Historial de Pagos de este Lote: Mz {lote?.manzana || '-'} Lt {lote?.numero_lote || '-'} ({contractPagos.length} pagos)
+                  </h3>
+                </div>
+                <p className="text-[11px] text-slate-400">
+                  Cuotas y abonos registrados exclusivamente para este contrato. Total abonado: <span className="font-medium text-emerald-700">S/ {totalAbonadoLote.toLocaleString('es-PE', { minimumFractionDigits: 2 })}</span>
+                </p>
               </div>
               <button
                 onClick={handleOpenAbonar}
-                className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-white bg-emerald-600 hover:bg-emerald-700 rounded-md transition-colors cursor-pointer shadow-xs"
+                className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-white bg-emerald-600 hover:bg-emerald-700 rounded-md transition-colors cursor-pointer shadow-xs shrink-0 self-start sm:self-auto"
               >
                 <Plus className="w-3 h-3" />
-                <span>Registrar Pago</span>
+                <span>Registrar Pago en este Lote</span>
               </button>
             </div>
 
@@ -256,8 +357,15 @@ export const ContratoDetailModal: React.FC<ContratoDetailModalProps> = ({ contra
                 <tbody className="divide-y divide-slate-100 text-slate-700">
                   {contractPagos.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="px-4 py-5 text-center text-slate-400">
-                        No hay pagos adicionales registrados para este contrato.
+                      <td colSpan={6} className="px-4 py-8 text-center text-slate-400 space-y-1">
+                        <p className="font-semibold text-slate-600">
+                          No hay pagos registrados para este lote específico ({contrato.codigo_contrato}: Mz {lote?.manzana || '-'} Lt {lote?.numero_lote || '-'}).
+                        </p>
+                        {clientContracts.length > 1 && (
+                          <p className="text-[11px] text-slate-400">
+                            Este cliente posee {clientContracts.length} lotes. Seleccione otro lote en la barra superior para revisar sus respectivos abonos.
+                          </p>
+                        )}
                       </td>
                     </tr>
                   ) : (

@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { useData } from '../../context/DataContext';
 import { useCompany } from '../../context/CompanyContext';
 import { ControlCobranza } from '../../types/database';
+import { calcularMora, nivelMora, MoraInfo } from '../../utils/mora';
 import { 
   Search, 
   Download, 
@@ -14,11 +15,22 @@ import {
   Clock, 
   Building2,
   Calendar,
-  UserPlus
+  UserPlus,
+  Wallet,
+  Users,
+  Hourglass
 } from 'lucide-react';
 
 export const CobranzasModule: React.FC = () => {
-  const { cobranzas, setSelectedContractForPayment, loading, setIsNuevoClienteModalOpen } = useData();
+  const { cobranzas: rawCobranzas, setSelectedContractForPayment, loading, setIsNuevoClienteModalOpen } = useData();
+
+  // Enrich every contract with its overdue info (cuotas vencidas, monto, días de atraso)
+  const cobranzas = useMemo(
+    () => rawCobranzas.map(c => ({ ...c, mora: calcularMora(c) })),
+    [rawCobranzas]
+  );
+  type CobranzaConMora = ControlCobranza & { mora: MoraInfo };
+  const [sortBy, setSortBy] = useState<string>('CONTRATO');
   const { buildWhatsAppMessage } = useCompany();
 
   // Filters & Search
@@ -49,8 +61,8 @@ export const CobranzasModule: React.FC = () => {
   }, [cobranzas]);
 
   // Filtered cobranzas
-  const filteredCobranzas = useMemo(() => {
-    return cobranzas.filter((c) => {
+  const filteredCobranzas = useMemo<CobranzaConMora[]>(() => {
+    let list = cobranzas.filter((c) => {
       // 1. Search term (DNI, Nombre, Contrato)
       if (searchTerm.trim()) {
         const q = searchTerm.toLowerCase();
@@ -85,7 +97,27 @@ export const CobranzasModule: React.FC = () => {
 
       return true;
     });
-  }, [cobranzas, searchTerm, selectedManzana, selectedEtapa, selectedEstado]);
+
+    if (sortBy === 'MORA_CUOTAS') {
+      list = [...list].sort((a, b) => b.mora.cuotasVencidas - a.mora.cuotasVencidas || b.mora.montoVencido - a.mora.montoVencido);
+    } else if (sortBy === 'MORA_MONTO') {
+      list = [...list].sort((a, b) => b.mora.montoVencido - a.mora.montoVencido);
+    } else if (sortBy === 'MORA_DIAS') {
+      list = [...list].sort((a, b) => b.mora.diasAtraso - a.mora.diasAtraso);
+    }
+    return list;
+  }, [cobranzas, searchTerm, selectedManzana, selectedEtapa, selectedEstado, sortBy]);
+
+  // Mora KPIs over the filtered set
+  const moraStats = useMemo(() => {
+    const enMora = filteredCobranzas.filter(c => c.mora.cuotasVencidas > 0);
+    return {
+      contratos: enMora.length,
+      cuotas: enMora.reduce((s, c) => s + c.mora.cuotasVencidas, 0),
+      monto: enMora.reduce((s, c) => s + c.mora.montoVencido, 0),
+      graves: enMora.filter(c => c.mora.cuotasVencidas >= 4).length
+    };
+  }, [filteredCobranzas]);
 
   // Paginated records
   const totalPages = Math.ceil(filteredCobranzas.length / pageSize) || 1;
@@ -129,6 +161,10 @@ export const CobranzasModule: React.FC = () => {
       'Saldo Restante (S/)',
       'Próxima Cuota N°',
       'Próximo Vencimiento',
+      'Cuotas Vencidas',
+      'N° Cuotas Vencidas',
+      'Monto Vencido (S/)',
+      'Días de Atraso',
       'Estado Cobranza'
     ];
 
@@ -149,6 +185,10 @@ export const CobranzasModule: React.FC = () => {
       c.saldo_restante,
       c.proximo_numero_cuota,
       `"${c.proximo_vencimiento}"`,
+      c.mora.cuotasVencidas,
+      `"${c.mora.numerosCuotas.join(' - ')}"`,
+      c.mora.montoVencido.toFixed(2),
+      c.mora.diasAtraso,
       `"${c.estado_cobranza || (c.saldo_restante === 0 ? 'LIQUIDADO' : 'AL DIA')}"`
     ]);
 
@@ -177,6 +217,37 @@ export const CobranzasModule: React.FC = () => {
       fecha: formatDueDate(c.proximo_vencimiento)
     });
     return `https://wa.me/${phone}?text=${encodeURIComponent(msg)}`;
+  };
+
+  // Overdue (mora) cell: cuotas vencidas, monto adeudado y días de atraso
+  const renderMoraCell = (c: CobranzaConMora) => {
+    const { cuotasVencidas, montoVencido, diasAtraso, numerosCuotas } = c.mora;
+    const nivel = nivelMora(cuotasVencidas);
+    if (!nivel) {
+      return <span className="text-[11px] text-slate-400">Sin deuda vencida</span>;
+    }
+    const styles = {
+      leve: 'bg-amber-50 text-amber-700 border-amber-200',
+      moderada: 'bg-orange-50 text-orange-700 border-orange-200',
+      grave: 'bg-rose-50 text-rose-700 border-rose-200'
+    }[nivel];
+    const rango = numerosCuotas.length > 1
+      ? `Cuotas #${numerosCuotas[0]} a #${numerosCuotas[numerosCuotas.length - 1]}`
+      : `Cuota #${numerosCuotas[0]}`;
+    return (
+      <div title={rango}>
+        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold border ${styles}`}>
+          <AlertTriangle className="w-3 h-3" />
+          Debe {cuotasVencidas} {cuotasVencidas === 1 ? 'cuota' : 'cuotas'}
+        </span>
+        <div className="text-[11px] font-semibold text-rose-600 mt-1">
+          S/ {montoVencido.toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+        </div>
+        <div className="text-[10px] text-slate-400">
+          {diasAtraso} {diasAtraso === 1 ? 'día' : 'días'} de atraso • {rango}
+        </div>
+      </div>
+    );
   };
 
   // Minimalist status badge
@@ -254,8 +325,54 @@ export const CobranzasModule: React.FC = () => {
         </div>
       </div>
 
+      {/* Mora KPI cards */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <button
+          type="button"
+          onClick={() => { setSelectedEstado('EN MORA'); setSortBy('MORA_CUOTAS'); setCurrentPage(1); }}
+          className="text-left bg-white border border-slate-200 hover:border-rose-300 rounded-xl p-4 shadow-xs transition-colors cursor-pointer"
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-medium text-slate-500 uppercase tracking-wider">Contratos en Mora</span>
+            <Users className="w-4 h-4 text-rose-500" />
+          </div>
+          <p className="text-xl font-bold text-slate-900 mt-1">{moraStats.contratos}</p>
+          <p className="text-[11px] text-slate-400 mt-0.5">de {filteredCobranzas.length} contratos filtrados</p>
+        </button>
+        <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-medium text-slate-500 uppercase tracking-wider">Cuotas Vencidas</span>
+            <AlertTriangle className="w-4 h-4 text-amber-500" />
+          </div>
+          <p className="text-xl font-bold text-slate-900 mt-1">{moraStats.cuotas}</p>
+          <p className="text-[11px] text-slate-400 mt-0.5">cuotas impagas a la fecha</p>
+        </div>
+        <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-medium text-slate-500 uppercase tracking-wider">Monto Vencido</span>
+            <Wallet className="w-4 h-4 text-rose-500" />
+          </div>
+          <p className="text-xl font-bold text-rose-600 mt-1">
+            S/ {moraStats.monto.toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          </p>
+          <p className="text-[11px] text-slate-400 mt-0.5">deuda exigible por recuperar</p>
+        </div>
+        <button
+          type="button"
+          onClick={() => { setSelectedEstado('EN MORA'); setSortBy('MORA_DIAS'); setCurrentPage(1); }}
+          className="text-left bg-white border border-slate-200 hover:border-rose-300 rounded-xl p-4 shadow-xs transition-colors cursor-pointer"
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-medium text-slate-500 uppercase tracking-wider">Mora Grave (4+ cuotas)</span>
+            <Hourglass className="w-4 h-4 text-rose-600" />
+          </div>
+          <p className="text-xl font-bold text-slate-900 mt-1">{moraStats.graves}</p>
+          <p className="text-[11px] text-slate-400 mt-0.5">contratos en riesgo de resolución</p>
+        </button>
+      </div>
+
       {/* Filter and Search Bar */}
-      <div className="bg-white border border-slate-200 rounded-xl p-3.5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2.5 shadow-xs">
+      <div className="bg-white border border-slate-200 rounded-xl p-3.5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-2.5 shadow-xs">
         {/* Real-time search */}
         <div className="lg:col-span-2 relative">
           <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
@@ -322,6 +439,23 @@ export const CobranzasModule: React.FC = () => {
             <option value="LIQUIDADO">Liquidado</option>
           </select>
         </div>
+
+        {/* Sort */}
+        <div>
+          <select
+            value={sortBy}
+            onChange={(e) => {
+              setSortBy(e.target.value);
+              setCurrentPage(1);
+            }}
+            className="w-full px-3 py-2 bg-slate-50 hover:bg-white border border-slate-200 rounded-lg text-slate-700 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500 cursor-pointer"
+          >
+            <option value="CONTRATO">Ordenar: Código de contrato</option>
+            <option value="MORA_CUOTAS">Ordenar: Más cuotas vencidas</option>
+            <option value="MORA_MONTO">Ordenar: Mayor monto vencido</option>
+            <option value="MORA_DIAS">Ordenar: Más días de atraso</option>
+          </select>
+        </div>
       </div>
 
       {/* Cobranzas Table */}
@@ -333,6 +467,7 @@ export const CobranzasModule: React.FC = () => {
                 <th className="px-4 py-3">Contrato &amp; Lote</th>
                 <th className="px-4 py-3">Propietario / Contacto</th>
                 <th className="px-4 py-3 w-44">Avance de Cuotas</th>
+                <th className="px-4 py-3">Deuda Vencida</th>
                 <th className="px-4 py-3">Próximo Vencimiento</th>
                 <th className="px-4 py-3 text-right">Cuota</th>
                 <th className="px-4 py-3 text-right">Saldo Restante</th>
@@ -347,6 +482,7 @@ export const CobranzasModule: React.FC = () => {
                     <td className="px-4 py-3.5"><div className="h-4 bg-slate-100 rounded w-28"></div></td>
                     <td className="px-4 py-3.5"><div className="h-4 bg-slate-100 rounded w-40"></div></td>
                     <td className="px-4 py-3.5"><div className="h-4 bg-slate-100 rounded w-32"></div></td>
+                    <td className="px-4 py-3.5"><div className="h-4 bg-slate-100 rounded w-24"></div></td>
                     <td className="px-4 py-3.5"><div className="h-4 bg-slate-100 rounded w-36"></div></td>
                     <td className="px-4 py-3.5"><div className="h-4 bg-slate-100 rounded w-16 ml-auto"></div></td>
                     <td className="px-4 py-3.5"><div className="h-4 bg-slate-100 rounded w-20 ml-auto"></div></td>
@@ -356,7 +492,7 @@ export const CobranzasModule: React.FC = () => {
                 ))
               ) : paginatedCobranzas.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-4 py-12 text-center text-slate-400">
+                  <td colSpan={9} className="px-4 py-12 text-center text-slate-400">
                     <AlertTriangle className="w-6 h-6 text-slate-400 mx-auto mb-2" />
                     <p className="text-xs font-medium text-slate-700">No se encontraron contratos con los filtros aplicados</p>
                     <p className="text-[11px] text-slate-500 mt-0.5">Pruebe ajustando el término de búsqueda o seleccione otra opción</p>
@@ -425,6 +561,11 @@ export const CobranzasModule: React.FC = () => {
                         <span className="text-[10px] text-slate-400 block mt-0.5">
                           {c.cuotas_pendientes} cuotas restantes
                         </span>
+                      </td>
+
+                      {/* Deuda Vencida (Mora) */}
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        {renderMoraCell(c)}
                       </td>
 
                       {/* Próxima Cuota & Vencimiento */}

@@ -10,11 +10,13 @@ import {
   Building2,
   Settings,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  Download
 } from 'lucide-react';
 import { useData } from '../../context/DataContext';
 import { useAuth } from '../../context/AuthContext';
 import { useCompany } from '../../context/CompanyContext';
+import { usePwaInstall } from '../../hooks/usePwaInstall';
 
 export type ActiveModule = 'dashboard' | 'cobranzas' | 'ventas' | 'lotes' | 'caja' | 'usuarios' | 'auditoria' | 'configuracion';
 
@@ -27,6 +29,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeModule, setActiveModule 
   const { cobranzas, lotes, metrics, usuarios, pagos } = useData();
   const { user, canAccessFinanzas, canAccessUsuarios } = useAuth();
   const { empresaConfig } = useCompany();
+  const { isInstalled, installApp } = usePwaInstall();
 
   // Collapsed state persisted in localStorage
   const [isCollapsed, setIsCollapsed] = useState<boolean>(() => {
@@ -248,6 +251,35 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeModule, setActiveModule 
               </button>
             );
           })}
+
+          {/* PWA Install Button in Sidebar */}
+          {!isInstalled && (
+            <div className="pt-2 mt-2 border-t border-slate-100">
+              {isCollapsed ? (
+                <div className="relative group">
+                  <button
+                    onClick={installApp}
+                    className="w-full flex items-center justify-center p-2 rounded-lg text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 transition-colors cursor-pointer"
+                  >
+                    <Download className="w-4 h-4 text-emerald-600" />
+                  </button>
+                  <div className="absolute left-full ml-3 top-1/2 -translate-y-1/2 z-50 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-150">
+                    <div className="bg-slate-900 text-white text-xs px-2.5 py-1.5 rounded-md shadow-xl whitespace-nowrap font-medium">
+                      Instalar en PC / Móvil
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  onClick={installApp}
+                  className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-left text-xs font-semibold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 transition-colors cursor-pointer"
+                >
+                  <Download className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span className="truncate">Instalar en Escritorio</span>
+                </button>
+              )}
+            </div>
+          )}
         </div>
       </div>
 

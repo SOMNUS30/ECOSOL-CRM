@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useData } from '../../context/DataContext';
+import { usePwaInstall } from '../../hooks/usePwaInstall';
 import { RolUsuario } from '../../types/database';
 import { 
   Database, 
@@ -8,12 +9,14 @@ import {
   LogOut, 
   ShieldCheck, 
   User, 
-  ChevronDown
+  ChevronDown,
+  Download
 } from 'lucide-react';
 
 export const Topbar: React.FC = () => {
   const { user, logout, switchRole } = useAuth();
   const { connectionStatus, refreshData, loading } = useData();
+  const { isInstalled, installApp } = usePwaInstall();
 
   const [showRoleMenu, setShowRoleMenu] = useState(false);
 
@@ -43,6 +46,18 @@ export const Topbar: React.FC = () => {
 
       {/* Right side: Role selector, User, Logout */}
       <div className="flex items-center gap-2 sm:gap-3">
+        {/* PWA Install Button */}
+        {!isInstalled && (
+          <button
+            onClick={installApp}
+            title="Instalar sistema ECOSOL en tu computadora o escritorio"
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-xs font-semibold text-emerald-800 transition-colors cursor-pointer shadow-xs"
+          >
+            <Download className="w-3.5 h-3.5 text-emerald-600" />
+            <span className="hidden sm:inline">Instalar App</span>
+          </button>
+        )}
+
         {/* Role Switcher */}
         <div className="relative">
           <button

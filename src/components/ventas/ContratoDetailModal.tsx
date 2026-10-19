@@ -23,7 +23,7 @@ interface ContratoDetailModalProps {
 }
 
 export const ContratoDetailModal: React.FC<ContratoDetailModalProps> = ({ contrato: initialContrato, onClose }) => {
-  const { pagos, setSelectedContractForPayment, cobranzas, eliminarPago, setActiveVoucher, contratos, setSelectedContractDetail } = useData();
+  const { pagos = [], setSelectedContractForPayment, cobranzas = [], eliminarPago, setActiveVoucher, contratos = [], setSelectedContractDetail } = useData();
   const [contrato, setContrato] = useState<Contrato | null>(initialContrato);
   const [pagoToDelete, setPagoToDelete] = useState<Pago | null>(null);
   const [isDeletingPago, setIsDeletingPago] = useState<boolean>(false);
@@ -32,28 +32,24 @@ export const ContratoDetailModal: React.FC<ContratoDetailModalProps> = ({ contra
     setContrato(initialContrato);
   }, [initialContrato]);
 
-  if (!contrato) return null;
-
-  // Payments matching specifically this contract/lote
+  // ALL hooks MUST be called unconditionally at the top of the component before any early return!
   const contractPagos = useMemo(() => {
-    return pagos.filter(
+    if (!contrato) return [];
+    return (pagos || []).filter(
       p => String(p.contrato_id) === String(contrato.id) ||
            (p.codigo_contrato && p.codigo_contrato === contrato.codigo_contrato)
     );
-  }, [pagos, contrato.id, contrato.codigo_contrato]);
+  }, [pagos, contrato]);
 
-  const isContado = contrato.forma_compra === 'CONTADO' || contrato.estado === 'LIQUIDADO';
-  const cliente = contrato.cliente || (contrato as any).clientes;
-  const lote = contrato.lote || (contrato as any).lotes;
-  const matchCobranza = cobranzas.find(c => c.codigo_contrato === contrato.codigo_contrato);
-
-  // Find all contracts belonging to this client across all contracts in the system
   const clientContracts = useMemo(() => {
+    if (!contrato) return [];
+    const cliente = contrato.cliente || (contrato as any).clientes;
     const dni = cliente?.dni;
     const clId = contrato.cliente_id;
     const nombre = (cliente?.nombres_apellidos || '').trim().toLowerCase();
 
-    const matches = contratos.filter(c => {
+    const matches = (contratos || []).filter(c => {
+      if (!c) return false;
       const cCli = c.cliente || (c as any).clientes;
       if (dni && cCli?.dni && cCli.dni === dni) return true;
       if (clId && c.cliente_id && String(c.cliente_id) === String(clId)) return true;
@@ -62,7 +58,19 @@ export const ContratoDetailModal: React.FC<ContratoDetailModalProps> = ({ contra
     });
 
     return matches.length > 0 ? matches : [contrato];
-  }, [contratos, cliente?.dni, cliente?.nombres_apellidos, contrato.cliente_id, contrato.id]);
+  }, [contratos, contrato]);
+
+  const totalAbonadoLote = useMemo(() => {
+    return contractPagos.reduce((acc, p) => acc + Number(p.monto || 0), 0);
+  }, [contractPagos]);
+
+  // Early return after all hooks are executed
+  if (!contrato) return null;
+
+  const isContado = contrato.forma_compra === 'CONTADO' || contrato.estado === 'LIQUIDADO';
+  const cliente = contrato.cliente || (contrato as any).clientes;
+  const lote = contrato.lote || (contrato as any).lotes;
+  const matchCobranza = (cobranzas || []).find(c => c.codigo_contrato === contrato.codigo_contrato);
 
   const handleSelectContract = (c: Contrato) => {
     setContrato(c);
@@ -75,10 +83,6 @@ export const ContratoDetailModal: React.FC<ContratoDetailModalProps> = ({ contra
       setSelectedContractForPayment(matchCobranza);
     }
   };
-
-  const totalAbonadoLote = useMemo(() => {
-    return contractPagos.reduce((acc, p) => acc + Number(p.monto || 0), 0);
-  }, [contractPagos]);
 
   const handleConfirmDeletePago = async () => {
     if (!pagoToDelete) return;

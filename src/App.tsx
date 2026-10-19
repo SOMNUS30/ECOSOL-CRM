@@ -83,20 +83,26 @@ const MainAppContent: React.FC = () => {
       {/* Modals Portal (when authenticated) */}
       {isAuthenticated && (
         <>
-          <RegistrarAbonoModal
-            contract={selectedContractForPayment}
-            onClose={() => setSelectedContractForPayment(null)}
-          />
+          {selectedContractForPayment && (
+            <RegistrarAbonoModal
+              contract={selectedContractForPayment}
+              onClose={() => setSelectedContractForPayment(null)}
+            />
+          )}
 
-          <ContratoDetailModal
-            contrato={selectedContractDetail}
-            onClose={() => setSelectedContractDetail(null)}
-          />
+          {selectedContractDetail && (
+            <ContratoDetailModal
+              contrato={selectedContractDetail}
+              onClose={() => setSelectedContractDetail(null)}
+            />
+          )}
 
-          <VoucherModal
-            pago={activeVoucher}
-            onClose={() => setActiveVoucher(null)}
-          />
+          {activeVoucher && (
+            <VoucherModal
+              pago={activeVoucher}
+              onClose={() => setActiveVoucher(null)}
+            />
+          )}
 
           <NuevoClienteModal
             isOpen={isNuevoClienteModalOpen}

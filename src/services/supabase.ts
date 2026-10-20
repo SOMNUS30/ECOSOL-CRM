@@ -266,6 +266,38 @@ class SupabaseService {
     };
   }
 
+  // Update existing client in Supabase and sync local store
+  async actualizarCliente(id: number | string, updates: Partial<Cliente>): Promise<{ success: boolean; error?: string }> {
+    try {
+      const { error } = await supabase
+        .from('clientes')
+        .update({
+          ...(updates.nombres_apellidos !== undefined && { nombres_apellidos: updates.nombres_apellidos }),
+          ...(updates.dni !== undefined && { dni: updates.dni }),
+          ...(updates.telefono !== undefined && { telefono: updates.telefono }),
+          ...(updates.correo !== undefined && { correo: updates.correo }),
+          ...(updates.direccion !== undefined && { direccion: updates.direccion }),
+          ...(updates.distrito !== undefined && { distrito: updates.distrito }),
+          ...(updates.provincia !== undefined && { provincia: updates.provincia }),
+          ...(updates.departamento !== undefined && { departamento: updates.departamento })
+        })
+        .eq('id', id);
+
+      if (error) {
+        console.warn('Supabase update cliente warning:', error.message);
+      }
+    } catch (err: any) {
+      console.warn('Network issue during update cliente:', err);
+    }
+
+    // Persist locally
+    const currentClientes = this.getStoredClientes();
+    const updated = currentClientes.map(c => String(c.id) === String(id) ? { ...c, ...updates } : c);
+    localStorage.setItem(STORAGE_KEYS.CLIENTES, JSON.stringify(updated));
+
+    return { success: true };
+  }
+
   // Register new sale and contract with relational updates in Supabase and reactive cache
   async registrarVenta(params: RegistrarVentaParams): Promise<{
     success: boolean;
@@ -813,7 +845,7 @@ class SupabaseService {
           estado,
           cliente_id,
           lote_id,
-          clientes!contratos_cliente_id_fkey ( id, dni, nombres_apellidos, telefono, correo, direccion, distrito ),
+          clientes!contratos_cliente_id_fkey ( id, dni, nombres_apellidos, telefono, correo, direccion, distrito, provincia, departamento ),
           lotes!contratos_lote_id_fkey ( id, etapa, manzana, numero_lote, area_m2, precio_lista, estado )
         `)
         .order('id', { ascending: true });
@@ -839,8 +871,8 @@ class SupabaseService {
             estado,
             cliente_id,
             lote_id,
-            clientes ( id, dni, nombres_apellidos, telefono ),
-            lotes ( id, etapa, manzana, numero_lote, area_m2 )
+            clientes!contratos_cliente_id_fkey ( id, dni, nombres_apellidos, telefono, correo, direccion, distrito, provincia, departamento ),
+            lotes!contratos_lote_id_fkey ( id, etapa, manzana, numero_lote, area_m2, precio_lista, estado )
           `)
           .order('id', { ascending: true });
         data = retry.data as any;

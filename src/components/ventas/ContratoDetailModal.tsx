@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Contrato, Pago } from '../../types/database';
+import { Contrato, Pago, Cliente } from '../../types/database';
 import { useData } from '../../context/DataContext';
 import { toast } from 'sonner';
 import { 
@@ -14,7 +14,14 @@ import {
   AlertTriangle,
   AlertCircle,
   Layers,
-  CheckCircle2
+  CheckCircle2,
+  Mail,
+  MapPin,
+  Compass,
+  Edit2,
+  Save,
+  Phone,
+  MessageCircle
 } from 'lucide-react';
 
 interface ContratoDetailModalProps {
@@ -23,13 +30,36 @@ interface ContratoDetailModalProps {
 }
 
 export const ContratoDetailModal: React.FC<ContratoDetailModalProps> = ({ contrato: initialContrato, onClose }) => {
-  const { pagos = [], setSelectedContractForPayment, cobranzas = [], eliminarPago, setActiveVoucher, contratos = [], setSelectedContractDetail } = useData();
+  const { 
+    pagos = [], 
+    setSelectedContractForPayment, 
+    cobranzas = [], 
+    eliminarPago, 
+    setActiveVoucher, 
+    contratos = [], 
+    setSelectedContractDetail,
+    clientes = [],
+    actualizarCliente
+  } = useData();
   const [contrato, setContrato] = useState<Contrato | null>(initialContrato);
   const [pagoToDelete, setPagoToDelete] = useState<Pago | null>(null);
   const [isDeletingPago, setIsDeletingPago] = useState<boolean>(false);
 
+  // Client editing state
+  const [isEditingCliente, setIsEditingCliente] = useState(false);
+  const [editForm, setEditForm] = useState({
+    correo: '',
+    direccion: '',
+    telefono: '',
+    distrito: '',
+    provincia: '',
+    departamento: ''
+  });
+  const [isSavingCliente, setIsSavingCliente] = useState(false);
+
   useEffect(() => {
     setContrato(initialContrato);
+    setIsEditingCliente(false);
   }, [initialContrato]);
 
   // ALL hooks MUST be called unconditionally at the top of the component before any early return!
@@ -64,17 +94,89 @@ export const ContratoDetailModal: React.FC<ContratoDetailModalProps> = ({ contra
     return contractPagos.reduce((acc, p) => acc + Number(p.monto || 0), 0);
   }, [contractPagos]);
 
+  // Resolve full client information by cross-referencing with context clients (which loads all columns from Supabase)
+  const fullCliente: Cliente | undefined = useMemo(() => {
+    if (!contrato) return undefined;
+    const cl = contrato.cliente || (contrato as any).clientes;
+    const found = (clientes || []).find(c => 
+      (c.id && (c.id === contrato.cliente_id || c.id === cl?.id)) ||
+      (c.dni && cl?.dni && c.dni === cl.dni) ||
+      (c.nombres_apellidos && cl?.nombres_apellidos && c.nombres_apellidos.trim().toLowerCase() === cl.nombres_apellidos.trim().toLowerCase())
+    );
+
+    if (found) {
+      return {
+        ...found,
+        correo: found.correo || cl?.correo || '',
+        direccion: found.direccion || cl?.direccion || '',
+        telefono: found.telefono || cl?.telefono || '',
+        distrito: found.distrito || cl?.distrito || '',
+        provincia: found.provincia || cl?.provincia || '',
+        departamento: found.departamento || cl?.departamento || '',
+      };
+    }
+    return cl;
+  }, [contrato, clientes]);
+
   // Early return after all hooks are executed
   if (!contrato) return null;
 
   const isContado = contrato.forma_compra === 'CONTADO' || contrato.estado === 'LIQUIDADO';
-  const cliente = contrato.cliente || (contrato as any).clientes;
+  const cliente = fullCliente || contrato.cliente || (contrato as any).clientes;
   const lote = contrato.lote || (contrato as any).lotes;
   const matchCobranza = (cobranzas || []).find(c => c.codigo_contrato === contrato.codigo_contrato);
 
   const handleSelectContract = (c: Contrato) => {
     setContrato(c);
     setSelectedContractDetail(c);
+    setIsEditingCliente(false);
+  };
+
+  const handleStartEditCliente = () => {
+    setEditForm({
+      correo: cliente?.correo || '',
+      direccion: cliente?.direccion || '',
+      telefono: cliente?.telefono || '',
+      distrito: cliente?.distrito || '',
+      provincia: cliente?.provincia || '',
+      departamento: cliente?.departamento || ''
+    });
+    setIsEditingCliente(true);
+  };
+
+  const handleSaveCliente = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!cliente?.id) {
+      toast.error('No se puede actualizar el cliente porque no tiene un ID registrado');
+      return;
+    }
+    setIsSavingCliente(true);
+    try {
+      const res = await actualizarCliente(cliente.id, {
+        correo: editForm.correo.trim(),
+        direccion: editForm.direccion.trim(),
+        telefono: editForm.telefono.trim(),
+        distrito: editForm.distrito.trim(),
+        provincia: editForm.provincia.trim(),
+        departamento: editForm.departamento.trim()
+      });
+      if (res.success) {
+        toast.success('Datos del cliente actualizados', {
+          description: 'Se guardó correo, teléfono y dirección correctamente.'
+        });
+        setIsEditingCliente(false);
+      } else {
+        toast.error('Error al actualizar datos', {
+          description: res.error || 'Ocurrió un error en Supabase.'
+        });
+      }
+    } catch (err: any) {
+      toast.error('Error inesperado', {
+        description: err?.message || 'No se pudo guardar la información.'
+      });
+    } finally {
+      setIsSavingCliente(false);
+    }
   };
 
   const handleOpenAbonar = () => {
@@ -198,42 +300,205 @@ export const ContratoDetailModal: React.FC<ContratoDetailModalProps> = ({ contra
           {/* Top Dossier: Cliente + Lote */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {/* Ficha del Cliente */}
-            <div className="p-3.5 rounded-lg bg-slate-50 border border-slate-200 space-y-2">
+            <div className="p-3.5 rounded-lg bg-slate-50 border border-slate-200 space-y-2.5">
               <div className="flex items-center justify-between pb-2 border-b border-slate-200 text-slate-800 font-semibold text-xs">
                 <div className="flex items-center gap-1.5">
                   <User className="w-3.5 h-3.5 text-slate-500" />
                   <span>Datos del Propietario</span>
                 </div>
-                {clientContracts.length > 1 && (
-                  <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
-                    {clientContracts.length} lotes adquiridos
-                  </span>
-                )}
-              </div>
-              <div>
-                <span className="text-slate-500 block text-[11px]">Nombres y Apellidos</span>
-                <span className="text-slate-900 font-medium text-xs block">{cliente?.nombres_apellidos || 'Sin titular registrado'}</span>
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <span className="text-slate-500 block text-[11px]">DNI</span>
-                  <span className="text-slate-800 font-medium font-mono">{cliente?.dni || '-'}</span>
-                </div>
-                <div>
-                  <span className="text-slate-500 block text-[11px]">Teléfono</span>
-                  <span className="text-slate-800 font-medium">{cliente?.telefono || '-'}</span>
+                <div className="flex items-center gap-1.5">
+                  {clientContracts.length > 1 && (
+                    <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
+                      {clientContracts.length} lotes adquiridos
+                    </span>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => isEditingCliente ? setIsEditingCliente(false) : handleStartEditCliente()}
+                    className="inline-flex items-center gap-1 px-2 py-0.5 text-[11px] font-medium text-slate-600 hover:text-emerald-700 hover:bg-emerald-50 rounded border border-slate-200 hover:border-emerald-200 transition-colors cursor-pointer"
+                    title="Editar información de contacto y dirección"
+                  >
+                    <Edit2 className="w-3 h-3" />
+                    <span>{isEditingCliente ? 'Cancelar' : 'Editar'}</span>
+                  </button>
                 </div>
               </div>
-              <div>
-                <span className="text-slate-500 block text-[11px]">Correo</span>
-                <span className="text-slate-700 truncate block">{cliente?.correo || '-'}</span>
-              </div>
-              <div>
-                <span className="text-slate-500 block text-[11px]">Dirección</span>
-                <span className="text-slate-700 block">
-                  {cliente?.direccion ? `${cliente.direccion}${cliente.distrito ? `, ${cliente.distrito}` : ''}` : '-'}
-                </span>
-              </div>
+
+              {isEditingCliente ? (
+                <form onSubmit={handleSaveCliente} className="space-y-2 pt-1">
+                  <div>
+                    <label className="text-slate-500 block text-[10px] font-medium mb-0.5">Nombres y Apellidos</label>
+                    <input
+                      type="text"
+                      disabled
+                      value={cliente?.nombres_apellidos || ''}
+                      className="w-full px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs text-slate-600 font-medium cursor-not-allowed"
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-slate-500 block text-[10px] font-medium mb-0.5">DNI</label>
+                      <input
+                        type="text"
+                        disabled
+                        value={cliente?.dni || ''}
+                        className="w-full px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs text-slate-600 font-mono cursor-not-allowed"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-slate-500 block text-[10px] font-medium mb-0.5">Teléfono</label>
+                      <input
+                        type="text"
+                        value={editForm.telefono}
+                        onChange={(e) => setEditForm(prev => ({ ...prev, telefono: e.target.value }))}
+                        placeholder="Ej. 987654321"
+                        className="w-full px-2 py-1 bg-white border border-slate-300 rounded text-xs text-slate-800 focus:outline-emerald-500"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-slate-500 block text-[10px] font-medium mb-0.5">Correo Electrónico</label>
+                    <input
+                      type="email"
+                      value={editForm.correo}
+                      onChange={(e) => setEditForm(prev => ({ ...prev, correo: e.target.value }))}
+                      placeholder="correo@ejemplo.com"
+                      className="w-full px-2 py-1 bg-white border border-slate-300 rounded text-xs text-slate-800 focus:outline-emerald-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-slate-500 block text-[10px] font-medium mb-0.5">Dirección</label>
+                    <input
+                      type="text"
+                      value={editForm.direccion}
+                      onChange={(e) => setEditForm(prev => ({ ...prev, direccion: e.target.value }))}
+                      placeholder="Calle / Av. / Mz y Lt"
+                      className="w-full px-2 py-1 bg-white border border-slate-300 rounded text-xs text-slate-800 focus:outline-emerald-500"
+                    />
+                  </div>
+                  <div className="grid grid-cols-3 gap-1.5">
+                    <div>
+                      <label className="text-slate-500 block text-[10px] font-medium mb-0.5">Distrito</label>
+                      <input
+                        type="text"
+                        value={editForm.distrito}
+                        onChange={(e) => setEditForm(prev => ({ ...prev, distrito: e.target.value }))}
+                        placeholder="Distrito"
+                        className="w-full px-2 py-1 bg-white border border-slate-300 rounded text-xs text-slate-800 focus:outline-emerald-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-slate-500 block text-[10px] font-medium mb-0.5">Provincia</label>
+                      <input
+                        type="text"
+                        value={editForm.provincia}
+                        onChange={(e) => setEditForm(prev => ({ ...prev, provincia: e.target.value }))}
+                        placeholder="Provincia"
+                        className="w-full px-2 py-1 bg-white border border-slate-300 rounded text-xs text-slate-800 focus:outline-emerald-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-slate-500 block text-[10px] font-medium mb-0.5">Departamento</label>
+                      <input
+                        type="text"
+                        value={editForm.departamento}
+                        onChange={(e) => setEditForm(prev => ({ ...prev, departamento: e.target.value }))}
+                        placeholder="Dpto"
+                        className="w-full px-2 py-1 bg-white border border-slate-300 rounded text-xs text-slate-800 focus:outline-emerald-500"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-end gap-1.5 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => setIsEditingCliente(false)}
+                      disabled={isSavingCliente}
+                      className="px-2.5 py-1 text-xs text-slate-600 hover:text-slate-800 rounded border border-slate-200 cursor-pointer"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={isSavingCliente}
+                      className="inline-flex items-center gap-1 px-3 py-1 text-xs font-medium text-white bg-emerald-600 hover:bg-emerald-700 rounded transition-colors cursor-pointer disabled:opacity-50"
+                    >
+                      <Save className="w-3 h-3" />
+                      <span>{isSavingCliente ? 'Guardando...' : 'Guardar'}</span>
+                    </button>
+                  </div>
+                </form>
+              ) : (
+                <>
+                  <div>
+                    <span className="text-slate-500 block text-[11px]">Nombres y Apellidos</span>
+                    <span className="text-slate-900 font-semibold text-xs block">{cliente?.nombres_apellidos || 'Sin titular registrado'}</span>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <span className="text-slate-500 block text-[11px]">DNI</span>
+                      <span className="text-slate-800 font-medium font-mono">{cliente?.dni || '-'}</span>
+                    </div>
+                    <div>
+                      <span className="text-slate-500 block text-[11px]">Teléfono</span>
+                      {cliente?.telefono ? (
+                        <div className="flex items-center gap-1.5 mt-0.5">
+                          <span className="text-slate-800 font-medium">{cliente.telefono}</span>
+                          <a
+                            href={`https://wa.me/51${cliente.telefono.replace(/\D/g, '')}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-emerald-600 hover:text-emerald-700 transition-colors p-0.5"
+                            title="Abrir WhatsApp"
+                          >
+                            <MessageCircle className="w-3.5 h-3.5" />
+                          </a>
+                        </div>
+                      ) : (
+                        <span className="text-slate-400 italic text-[11px]">No registrado</span>
+                      )}
+                    </div>
+                  </div>
+
+                  <div>
+                    <span className="text-slate-500 block text-[11px] mb-0.5">Correo Electrónico</span>
+                    {cliente?.correo ? (
+                      <div className="flex items-center gap-1.5">
+                        <Mail className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                        <a
+                          href={`mailto:${cliente.correo}`}
+                          className="text-emerald-700 hover:underline font-medium truncate block text-xs"
+                          title="Enviar correo"
+                        >
+                          {cliente.correo}
+                        </a>
+                      </div>
+                    ) : (
+                      <span className="text-slate-400 italic text-[11px]">Sin correo registrado</span>
+                    )}
+                  </div>
+
+                  <div>
+                    <span className="text-slate-500 block text-[11px] mb-0.5">Dirección y Ubicación</span>
+                    {cliente?.direccion || cliente?.distrito ? (
+                      <div className="flex items-start gap-1.5">
+                        <MapPin className="w-3.5 h-3.5 text-rose-500 shrink-0 mt-0.5" />
+                        <div className="text-slate-800 text-xs">
+                          <span className="font-medium block">{cliente?.direccion || 'Sin dirección exacta'}</span>
+                          {(cliente?.distrito || cliente?.provincia || cliente?.departamento) && (
+                            <span className="text-[11px] text-slate-500 flex items-center gap-1 mt-0.5">
+                              <Compass className="w-3 h-3 text-slate-400 shrink-0" />
+                              {[cliente.distrito, cliente.provincia, cliente.departamento].filter(Boolean).join(' • ')}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    ) : (
+                      <span className="text-slate-400 italic text-[11px]">Sin dirección registrada</span>
+                    )}
+                  </div>
+                </>
+              )}
             </div>
 
             {/* Ficha del Lote */}

@@ -35,6 +35,7 @@ interface DataContextType {
   eliminarPago: (pagoId: number | string) => Promise<{ success: boolean; error?: string }>;
   registrarEgreso: (egresoData: Omit<Egreso, 'id'>) => Promise<{ success: boolean; error?: string }>;
   registrarCliente: (clienteData: Omit<Cliente, 'id'>) => Promise<Cliente | null>;
+  actualizarCliente: (id: number | string, updates: Partial<Cliente>) => Promise<{ success: boolean; error?: string }>;
   registrarVenta: (params: RegistrarVentaParams) => Promise<boolean>;
   getNextContractCode: () => string;
   guardarUsuario: (usuario: UsuarioSistema) => Promise<void> | void;
@@ -153,12 +154,52 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     setCobranzas(cobranzasList);
 
-    const loadedContratos = contratosRes.data || [];
+    const rawContratos = contratosRes.data || [];
+    const clientList = clientesRes.data || [];
+
+    // Map clients to ensure 100% of contracts have full client info (correo, direccion, distrito, etc.)
+    const clientMap = new Map<string, Cliente>();
+    clientList.forEach(c => {
+      if (c.id) clientMap.set(String(c.id), c);
+      if (c.dni) clientMap.set(String(c.dni).trim(), c);
+      if (c.nombres_apellidos) clientMap.set(c.nombres_apellidos.trim().toLowerCase(), c);
+    });
+
+    const loadedContratos = rawContratos.map(ctr => {
+      const cId = ctr.cliente_id || ctr.cliente?.id || (ctr as any).clientes?.id;
+      const cDni = ctr.cliente?.dni || (ctr as any).clientes?.dni;
+      const cName = (ctr.cliente?.nombres_apellidos || (ctr as any).clientes?.nombres_apellidos || '').trim().toLowerCase();
+
+      const matched = (cId && clientMap.get(String(cId))) ||
+                      (cDni && clientMap.get(String(cDni))) ||
+                      (cName && clientMap.get(cName));
+
+      if (matched) {
+        const mergedCliente: Cliente = {
+          ...matched,
+          ...(ctr.cliente || (ctr as any).clientes || {}),
+          correo: (ctr.cliente?.correo || (ctr as any).clientes?.correo || matched.correo || '').trim(),
+          direccion: (ctr.cliente?.direccion || (ctr as any).clientes?.direccion || matched.direccion || '').trim(),
+          distrito: (ctr.cliente?.distrito || (ctr as any).clientes?.distrito || matched.distrito || '').trim(),
+          provincia: (ctr.cliente?.provincia || (ctr as any).clientes?.provincia || matched.provincia || '').trim(),
+          departamento: (ctr.cliente?.departamento || (ctr as any).clientes?.departamento || matched.departamento || '').trim(),
+          telefono: (ctr.cliente?.telefono || (ctr as any).clientes?.telefono || matched.telefono || '').trim(),
+          dni: (ctr.cliente?.dni || (ctr as any).clientes?.dni || matched.dni || '').trim()
+        };
+        return {
+          ...ctr,
+          cliente: mergedCliente,
+          clientes: mergedCliente
+        };
+      }
+      return ctr;
+    });
+
     setContratos(loadedContratos);
     if (contratosRes.error) setContratosError(contratosRes.error);
 
-    if (clientesRes.data && clientesRes.data.length > 0) {
-      setClientes(clientesRes.data);
+    if (clientList.length > 0) {
+      setClientes(clientList);
     }
     if (lotesRes.data && lotesRes.data.length > 0) {
       setLotes(lotesRes.data);
@@ -203,6 +244,26 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return res.cliente;
     }
     return null;
+  };
+
+  const actualizarCliente = async (id: number | string, updates: Partial<Cliente>): Promise<{ success: boolean; error?: string }> => {
+    const res = await supabaseService.actualizarCliente(id, updates);
+    if (res.success) {
+      setClientes(prev => prev.map(c => String(c.id) === String(id) ? { ...c, ...updates } : c));
+      setContratos(prev => prev.map(ctr => {
+        const cId = ctr.cliente_id || ctr.cliente?.id || (ctr as any).clientes?.id;
+        if (String(cId) === String(id)) {
+          const updatedCli = { ...ctr.cliente, ...updates } as Cliente;
+          return {
+            ...ctr,
+            cliente: updatedCli,
+            clientes: updatedCli
+          };
+        }
+        return ctr;
+      }));
+    }
+    return res;
   };
 
   const registrarVenta = async (params: RegistrarVentaParams): Promise<boolean> => {
@@ -456,6 +517,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         eliminarPago,
         registrarEgreso,
         registrarCliente,
+        actualizarCliente,
         registrarVenta,
         getNextContractCode,
         guardarUsuario,

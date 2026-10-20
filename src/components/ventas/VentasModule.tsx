@@ -112,8 +112,10 @@ export const VentasModule: React.FC = () => {
           cuotas_pagadas_base,
           fecha_primer_pago,
           estado,
-          clientes ( dni, nombres_apellidos, telefono ),
-          lotes ( etapa, manzana, numero_lote, area_m2 )
+          cliente_id,
+          lote_id,
+          clientes!contratos_cliente_id_fkey ( id, dni, nombres_apellidos, telefono, correo, direccion, distrito, provincia, departamento ),
+          lotes!contratos_lote_id_fkey ( id, etapa, manzana, numero_lote, area_m2, precio_lista, estado )
         `)
         .order('id', { ascending: true });
 
@@ -135,8 +137,10 @@ export const VentasModule: React.FC = () => {
             cuotas_pagadas_base,
             fecha_primer_pago,
             estado,
-            clientes!contratos_cliente_id_fkey ( dni, nombres_apellidos, telefono ),
-            lotes!contratos_lote_id_fkey ( etapa, manzana, numero_lote, area_m2 )
+            cliente_id,
+            lote_id,
+            clientes!contratos_cliente_id_fkey ( id, dni, nombres_apellidos, telefono, correo, direccion, distrito, provincia, departamento ),
+            lotes!contratos_lote_id_fkey ( id, etapa, manzana, numero_lote, area_m2, precio_lista, estado )
           `)
           .order('id', { ascending: true });
         data = retry.data;
@@ -152,6 +156,18 @@ export const VentasModule: React.FC = () => {
           const clienteObj = Array.isArray(row.clientes) ? row.clientes[0] : row.clientes;
           const loteObj = Array.isArray(row.lotes) ? row.lotes[0] : row.lotes;
 
+          const clienteNormalized = clienteObj ? {
+            id: clienteObj.id || 0,
+            dni: clienteObj.dni || '',
+            nombres_apellidos: clienteObj.nombres_apellidos || '',
+            telefono: clienteObj.telefono || '',
+            correo: clienteObj.correo || '',
+            direccion: clienteObj.direccion || '',
+            distrito: clienteObj.distrito || '',
+            provincia: clienteObj.provincia || '',
+            departamento: clienteObj.departamento || ''
+          } : undefined;
+
           return {
             id: row.id,
             codigo_contrato: row.codigo_contrato,
@@ -166,8 +182,10 @@ export const VentasModule: React.FC = () => {
             cuotas_pagadas_base: Number(row.cuotas_pagadas_base || 0),
             fecha_primer_pago: row.fecha_primer_pago || '',
             estado: row.estado,
-            cliente: clienteObj,
-            clientes: clienteObj,
+            cliente_id: row.cliente_id || (clienteObj?.id ?? 0),
+            lote_id: row.lote_id || (loteObj?.id ?? 0),
+            cliente: clienteNormalized,
+            clientes: clienteNormalized,
             lote: loteObj,
             lotes: loteObj
           };

@@ -18,8 +18,10 @@ import {
   UserPlus,
   Wallet,
   Users,
-  Hourglass
+  Hourglass,
+  FileSpreadsheet
 } from 'lucide-react';
+import { ReporteCuotasVencidasModal } from './ReporteCuotasVencidasModal';
 
 export const CobranzasModule: React.FC = () => {
   const { cobranzas: rawCobranzas, setSelectedContractForPayment, loading, setIsNuevoClienteModalOpen } = useData();
@@ -38,6 +40,9 @@ export const CobranzasModule: React.FC = () => {
   const [selectedManzana, setSelectedManzana] = useState<string>('ALL');
   const [selectedEtapa, setSelectedEtapa] = useState<string>('ALL');
   const [selectedEstado, setSelectedEstado] = useState<string>('ALL');
+  const [selectedCuotasVencidas, setSelectedCuotasVencidas] = useState<string>('ALL');
+  const [isReporteModalOpen, setIsReporteModalOpen] = useState(false);
+  const [reporteInitialCuotas, setReporteInitialCuotas] = useState(3);
 
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
@@ -93,6 +98,12 @@ export const CobranzasModule: React.FC = () => {
         } else if (selectedEstado === 'LIQUIDADO') {
           if (c.estado_cobranza !== 'LIQUIDADO' && c.saldo_restante !== 0) return false;
         }
+      }
+
+      // 5. Cuotas Vencidas Filter
+      if (selectedCuotasVencidas !== 'ALL') {
+        const minVenc = parseInt(selectedCuotasVencidas, 10);
+        if (c.mora.cuotasVencidas < minVenc) return false;
       }
 
       return true;
@@ -307,7 +318,7 @@ export const CobranzasModule: React.FC = () => {
         </div>
 
         {/* Action Buttons */}
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <button
             onClick={() => setIsNuevoClienteModalOpen(true)}
             className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-medium shadow-xs transition-colors flex items-center gap-1.5 cursor-pointer"
@@ -316,37 +327,74 @@ export const CobranzasModule: React.FC = () => {
             <span>+ Nuevo Cliente</span>
           </button>
           <button
+            onClick={() => {
+              setReporteInitialCuotas(3);
+              setIsReporteModalOpen(true);
+            }}
+            className="px-3.5 py-2 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 text-emerald-800 rounded-lg text-xs font-bold transition-all flex items-center gap-2 shadow-xs cursor-pointer hover:border-emerald-400"
+            title="Generar reporte en Excel de clientes con 3 a más cuotas vencidas (personalizable)"
+          >
+            <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
+            <span>Reporte Cuotas Vencidas (.xlsx)</span>
+          </button>
+          <button
             onClick={handleExportCSV}
             className="px-3.5 py-2 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 rounded-lg text-xs font-medium transition-colors flex items-center gap-2 shadow-xs cursor-pointer"
           >
             <Download className="w-3.5 h-3.5 text-slate-500" />
-            <span>Exportar CSV / Excel</span>
+            <span>Exportar CSV</span>
           </button>
         </div>
       </div>
 
       {/* Mora KPI cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <button
-          type="button"
+        <div
           onClick={() => { setSelectedEstado('EN MORA'); setSortBy('MORA_CUOTAS'); setCurrentPage(1); }}
-          className="text-left bg-white border border-slate-200 hover:border-rose-300 rounded-xl p-4 shadow-xs transition-colors cursor-pointer"
+          className="text-left bg-white border border-slate-200 hover:border-rose-300 rounded-xl p-4 shadow-xs transition-colors cursor-pointer group"
         >
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-medium text-slate-500 uppercase tracking-wider">Contratos en Mora</span>
             <Users className="w-4 h-4 text-rose-500" />
           </div>
           <p className="text-xl font-bold text-slate-900 mt-1">{moraStats.contratos}</p>
-          <p className="text-[11px] text-slate-400 mt-0.5">de {filteredCobranzas.length} contratos filtrados</p>
-        </button>
+          <div className="flex items-center justify-between mt-1 text-[11px] text-slate-400">
+            <span>de {filteredCobranzas.length} contratos</span>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setReporteInitialCuotas(1);
+                setIsReporteModalOpen(true);
+              }}
+              className="text-emerald-700 hover:text-emerald-800 font-semibold underline text-[10px] cursor-pointer"
+            >
+              Excel 1+
+            </button>
+          </div>
+        </div>
+
         <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs">
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-medium text-slate-500 uppercase tracking-wider">Cuotas Vencidas</span>
             <AlertTriangle className="w-4 h-4 text-amber-500" />
           </div>
           <p className="text-xl font-bold text-slate-900 mt-1">{moraStats.cuotas}</p>
-          <p className="text-[11px] text-slate-400 mt-0.5">cuotas impagas a la fecha</p>
+          <div className="flex items-center justify-between mt-1 text-[11px] text-slate-400">
+            <span>cuotas impagas a la fecha</span>
+            <button
+              type="button"
+              onClick={() => {
+                setReporteInitialCuotas(3);
+                setIsReporteModalOpen(true);
+              }}
+              className="text-emerald-700 hover:text-emerald-800 font-semibold underline text-[10px] cursor-pointer"
+            >
+              Excel 3+
+            </button>
+          </div>
         </div>
+
         <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs">
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-medium text-slate-500 uppercase tracking-wider">Monto Vencido</span>
@@ -357,22 +405,35 @@ export const CobranzasModule: React.FC = () => {
           </p>
           <p className="text-[11px] text-slate-400 mt-0.5">deuda exigible por recuperar</p>
         </div>
-        <button
-          type="button"
+
+        <div
           onClick={() => { setSelectedEstado('EN MORA'); setSortBy('MORA_DIAS'); setCurrentPage(1); }}
-          className="text-left bg-white border border-slate-200 hover:border-rose-300 rounded-xl p-4 shadow-xs transition-colors cursor-pointer"
+          className="text-left bg-white border border-slate-200 hover:border-rose-300 rounded-xl p-4 shadow-xs transition-colors cursor-pointer group"
         >
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-medium text-slate-500 uppercase tracking-wider">Mora Grave (4+ cuotas)</span>
             <Hourglass className="w-4 h-4 text-rose-600" />
           </div>
           <p className="text-xl font-bold text-slate-900 mt-1">{moraStats.graves}</p>
-          <p className="text-[11px] text-slate-400 mt-0.5">contratos en riesgo de resolución</p>
-        </button>
+          <div className="flex items-center justify-between mt-1 text-[11px] text-slate-400">
+            <span>riesgo de resolución</span>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setReporteInitialCuotas(4);
+                setIsReporteModalOpen(true);
+              }}
+              className="text-rose-700 hover:text-rose-800 font-semibold underline text-[10px] cursor-pointer"
+            >
+              Excel 4+
+            </button>
+          </div>
+        </div>
       </div>
 
       {/* Filter and Search Bar */}
-      <div className="bg-white border border-slate-200 rounded-xl p-3.5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-2.5 shadow-xs">
+      <div className="bg-white border border-slate-200 rounded-xl p-3.5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-7 gap-2.5 shadow-xs">
         {/* Real-time search */}
         <div className="lg:col-span-2 relative">
           <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
@@ -388,6 +449,25 @@ export const CobranzasModule: React.FC = () => {
           />
         </div>
 
+        {/* Cuotas Vencidas Filter */}
+        <div>
+          <select
+            value={selectedCuotasVencidas}
+            onChange={(e) => {
+              setSelectedCuotasVencidas(e.target.value);
+              setCurrentPage(1);
+            }}
+            className="w-full px-3 py-2 bg-slate-50 hover:bg-white border border-slate-200 rounded-lg text-slate-700 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500 cursor-pointer font-medium"
+          >
+            <option value="ALL">Cuotas: Todas</option>
+            <option value="1">1+ cuota vencida</option>
+            <option value="2">2+ cuotas vencidas</option>
+            <option value="3">3+ cuotas vencidas</option>
+            <option value="4">4+ cuotas (Grave)</option>
+            <option value="6">6+ cuotas (Crítica)</option>
+          </select>
+        </div>
+
         {/* Manzana Filter */}
         <div>
           <select
@@ -398,7 +478,7 @@ export const CobranzasModule: React.FC = () => {
             }}
             className="w-full px-3 py-2 bg-slate-50 hover:bg-white border border-slate-200 rounded-lg text-slate-700 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500 cursor-pointer"
           >
-            <option value="ALL">Todas las Manzanas ({uniqueManzanas.length})</option>
+            <option value="ALL">Todas las Mz ({uniqueManzanas.length})</option>
             {uniqueManzanas.map((mz) => (
               <option key={mz} value={mz}>Manzana {mz}</option>
             ))}
@@ -450,10 +530,10 @@ export const CobranzasModule: React.FC = () => {
             }}
             className="w-full px-3 py-2 bg-slate-50 hover:bg-white border border-slate-200 rounded-lg text-slate-700 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500 cursor-pointer"
           >
-            <option value="CONTRATO">Ordenar: Código de contrato</option>
-            <option value="MORA_CUOTAS">Ordenar: Más cuotas vencidas</option>
-            <option value="MORA_MONTO">Ordenar: Mayor monto vencido</option>
-            <option value="MORA_DIAS">Ordenar: Más días de atraso</option>
+            <option value="CONTRATO">Ordenar: Código</option>
+            <option value="MORA_CUOTAS">Más cuotas vencidas</option>
+            <option value="MORA_MONTO">Mayor monto vencido</option>
+            <option value="MORA_DIAS">Más días atraso</option>
           </select>
         </div>
       </div>
@@ -663,6 +743,13 @@ export const CobranzasModule: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* Reporte de Cuotas Vencidas en Excel Modal */}
+      <ReporteCuotasVencidasModal
+        isOpen={isReporteModalOpen}
+        onClose={() => setIsReporteModalOpen(false)}
+        initialMinCuotas={reporteInitialCuotas}
+      />
     </div>
   );
 };

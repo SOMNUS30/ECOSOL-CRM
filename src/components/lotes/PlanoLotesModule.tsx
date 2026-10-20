@@ -7,11 +7,14 @@ import {
   X, 
   User, 
   CreditCard, 
-  FileText
+  FileText,
+  Mail,
+  MapPin,
+  Compass
 } from 'lucide-react';
 
 export const PlanoLotesModule: React.FC = () => {
-  const { lotes, contratos, cobranzas, setSelectedContractDetail, setSelectedContractForPayment } = useData();
+  const { lotes, contratos, cobranzas, clientes, setSelectedContractDetail, setSelectedContractForPayment } = useData();
 
   const [selectedMz, setSelectedMz] = useState<string>('ALL');
   const [selectedEstado, setSelectedEstado] = useState<string>('ALL');
@@ -94,6 +97,22 @@ export const PlanoLotesModule: React.FC = () => {
 
   const drawerContract = drawerLote ? getContractForLote(drawerLote) : undefined;
   const drawerCobranza = drawerLote ? getCobranzaForLote(drawerLote) : undefined;
+
+  const drawerCliente = useMemo(() => {
+    if (!drawerContract && !drawerCobranza) return undefined;
+    const cl = drawerContract?.cliente || (drawerContract as any)?.clientes;
+    const dni = cl?.dni || drawerCobranza?.dni;
+    const nombre = (cl?.nombres_apellidos || drawerCobranza?.propietario || '').trim().toLowerCase();
+    const clId = drawerContract?.cliente_id;
+
+    const found = (clientes || []).find(c =>
+      (clId && c.id === clId) ||
+      (dni && c.dni === dni) ||
+      (nombre && c.nombres_apellidos?.trim().toLowerCase() === nombre)
+    );
+
+    return found || cl;
+  }, [drawerContract, drawerCobranza, clientes]);
 
   return (
     <div className="space-y-4 relative">
@@ -353,24 +372,58 @@ export const PlanoLotesModule: React.FC = () => {
 
                     <div>
                       <span className="text-slate-500 block text-[11px]">Propietario</span>
-                      <span className="text-slate-900 font-medium text-xs block">
-                        {drawerContract?.cliente?.nombres_apellidos || drawerCobranza?.propietario}
+                      <span className="text-slate-900 font-semibold text-xs block">
+                        {drawerCliente?.nombres_apellidos || drawerCobranza?.propietario}
                       </span>
                     </div>
 
                     <div className="grid grid-cols-2 gap-2">
                       <div>
                         <span className="text-slate-500 block text-[11px]">DNI</span>
-                        <span className="text-slate-800 font-medium">
-                          {drawerContract?.cliente?.dni || drawerCobranza?.dni}
+                        <span className="text-slate-800 font-medium font-mono">
+                          {drawerCliente?.dni || drawerCobranza?.dni || '-'}
                         </span>
                       </div>
                       <div>
                         <span className="text-slate-500 block text-[11px]">Teléfono</span>
                         <span className="text-slate-800 font-medium">
-                          {drawerContract?.cliente?.telefono || drawerCobranza?.telefono}
+                          {drawerCliente?.telefono || drawerCobranza?.telefono || '-'}
                         </span>
                       </div>
+                    </div>
+
+                    <div>
+                      <span className="text-slate-500 block text-[11px] mb-0.5">Correo Electrónico</span>
+                      {drawerCliente?.correo ? (
+                        <div className="flex items-center gap-1.5">
+                          <Mail className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                          <a href={`mailto:${drawerCliente.correo}`} className="text-emerald-700 hover:underline font-medium truncate block text-xs">
+                            {drawerCliente.correo}
+                          </a>
+                        </div>
+                      ) : (
+                        <span className="text-slate-400 italic text-[11px]">Sin correo registrado</span>
+                      )}
+                    </div>
+
+                    <div>
+                      <span className="text-slate-500 block text-[11px] mb-0.5">Dirección y Ubicación</span>
+                      {drawerCliente?.direccion || drawerCliente?.distrito ? (
+                        <div className="flex items-start gap-1.5">
+                          <MapPin className="w-3.5 h-3.5 text-rose-500 shrink-0 mt-0.5" />
+                          <div className="text-slate-800 text-xs">
+                            <span className="font-medium block">{drawerCliente.direccion || 'Sin dirección exacta'}</span>
+                            {(drawerCliente.distrito || drawerCliente.provincia || drawerCliente.departamento) && (
+                              <span className="text-[11px] text-slate-500 flex items-center gap-1 mt-0.5">
+                                <Compass className="w-3 h-3 text-slate-400 shrink-0" />
+                                {[drawerCliente.distrito, drawerCliente.provincia, drawerCliente.departamento].filter(Boolean).join(' • ')}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      ) : (
+                        <span className="text-slate-400 italic text-[11px]">Sin dirección registrada</span>
+                      )}
                     </div>
 
                     <div className="pt-2 border-t border-slate-200">

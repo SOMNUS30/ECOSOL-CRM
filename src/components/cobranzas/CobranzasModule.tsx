@@ -19,7 +19,9 @@ import {
   Wallet,
   Users,
   Hourglass,
-  FileSpreadsheet
+  FileSpreadsheet,
+  X,
+  RotateCcw
 } from 'lucide-react';
 import { ReporteCuotasVencidasModal } from './ReporteCuotasVencidasModal';
 
@@ -103,7 +105,11 @@ export const CobranzasModule: React.FC = () => {
       // 5. Cuotas Vencidas Filter
       if (selectedCuotasVencidas !== 'ALL') {
         const minVenc = parseInt(selectedCuotasVencidas, 10);
-        if (c.mora.cuotasVencidas < minVenc) return false;
+        if (minVenc === 0) {
+          if (c.mora.cuotasVencidas > 0) return false;
+        } else {
+          if (c.mora.cuotasVencidas < minVenc) return false;
+        }
       }
 
       return true;
@@ -117,18 +123,18 @@ export const CobranzasModule: React.FC = () => {
       list = [...list].sort((a, b) => b.mora.diasAtraso - a.mora.diasAtraso);
     }
     return list;
-  }, [cobranzas, searchTerm, selectedManzana, selectedEtapa, selectedEstado, sortBy]);
+  }, [cobranzas, searchTerm, selectedManzana, selectedEtapa, selectedEstado, selectedCuotasVencidas, sortBy]);
 
-  // Mora KPIs over the filtered set
+  // Mora KPIs over the complete portfolio
   const moraStats = useMemo(() => {
-    const enMora = filteredCobranzas.filter(c => c.mora.cuotasVencidas > 0);
+    const enMora = cobranzas.filter(c => c.mora.cuotasVencidas > 0);
     return {
       contratos: enMora.length,
       cuotas: enMora.reduce((s, c) => s + c.mora.cuotasVencidas, 0),
       monto: enMora.reduce((s, c) => s + c.mora.montoVencido, 0),
       graves: enMora.filter(c => c.mora.cuotasVencidas >= 4).length
     };
-  }, [filteredCobranzas]);
+  }, [cobranzas]);
 
   // Paginated records
   const totalPages = Math.ceil(filteredCobranzas.length / pageSize) || 1;
@@ -328,14 +334,14 @@ export const CobranzasModule: React.FC = () => {
           </button>
           <button
             onClick={() => {
-              setReporteInitialCuotas(3);
+              setReporteInitialCuotas(0);
               setIsReporteModalOpen(true);
             }}
             className="px-3.5 py-2 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 text-emerald-800 rounded-lg text-xs font-bold transition-all flex items-center gap-2 shadow-xs cursor-pointer hover:border-emerald-400"
-            title="Generar reporte en Excel de clientes con 3 a más cuotas vencidas (personalizable)"
+            title="Generar reporte en Excel: clientes al día, en mora, cuotas pagadas y saldo restante del terreno"
           >
             <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
-            <span>Reporte Cuotas Vencidas (.xlsx)</span>
+            <span>Reporte Cartera & Cobranzas (.xlsx)</span>
           </button>
           <button
             onClick={handleExportCSV}
@@ -350,8 +356,17 @@ export const CobranzasModule: React.FC = () => {
       {/* Mora KPI cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <div
-          onClick={() => { setSelectedEstado('EN MORA'); setSortBy('MORA_CUOTAS'); setCurrentPage(1); }}
-          className="text-left bg-white border border-slate-200 hover:border-rose-300 rounded-xl p-4 shadow-xs transition-colors cursor-pointer group"
+          onClick={() => { 
+            setSelectedCuotasVencidas('1');
+            setSelectedEstado('ALL');
+            setSortBy('MORA_CUOTAS'); 
+            setCurrentPage(1); 
+          }}
+          className={`text-left border rounded-xl p-4 shadow-xs transition-colors cursor-pointer group ${
+            selectedCuotasVencidas === '1' && selectedEstado === 'ALL'
+              ? 'bg-rose-50/60 border-rose-400 ring-2 ring-rose-400/20'
+              : 'bg-white border-slate-200 hover:border-rose-300'
+          }`}
         >
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-medium text-slate-500 uppercase tracking-wider">Contratos en Mora</span>
@@ -359,7 +374,7 @@ export const CobranzasModule: React.FC = () => {
           </div>
           <p className="text-xl font-bold text-slate-900 mt-1">{moraStats.contratos}</p>
           <div className="flex items-center justify-between mt-1 text-[11px] text-slate-400">
-            <span>de {filteredCobranzas.length} contratos</span>
+            <span className="group-hover:text-rose-600 font-medium">Filtrar tabla</span>
             <button
               type="button"
               onClick={(e) => {
@@ -374,17 +389,26 @@ export const CobranzasModule: React.FC = () => {
           </div>
         </div>
 
-        <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs">
+        <div 
+          onClick={() => {
+            setSelectedCuotasVencidas('1');
+            setSelectedEstado('ALL');
+            setSortBy('MORA_CUOTAS');
+            setCurrentPage(1);
+          }}
+          className="text-left bg-white border border-slate-200 hover:border-amber-300 rounded-xl p-4 shadow-xs transition-colors cursor-pointer group"
+        >
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-medium text-slate-500 uppercase tracking-wider">Cuotas Vencidas</span>
             <AlertTriangle className="w-4 h-4 text-amber-500" />
           </div>
           <p className="text-xl font-bold text-slate-900 mt-1">{moraStats.cuotas}</p>
           <div className="flex items-center justify-between mt-1 text-[11px] text-slate-400">
-            <span>cuotas impagas a la fecha</span>
+            <span className="group-hover:text-amber-600 font-medium">Filtrar tabla</span>
             <button
               type="button"
-              onClick={() => {
+              onClick={(e) => {
+                e.stopPropagation();
                 setReporteInitialCuotas(3);
                 setIsReporteModalOpen(true);
               }}
@@ -407,8 +431,17 @@ export const CobranzasModule: React.FC = () => {
         </div>
 
         <div
-          onClick={() => { setSelectedEstado('EN MORA'); setSortBy('MORA_DIAS'); setCurrentPage(1); }}
-          className="text-left bg-white border border-slate-200 hover:border-rose-300 rounded-xl p-4 shadow-xs transition-colors cursor-pointer group"
+          onClick={() => { 
+            setSelectedCuotasVencidas('4'); 
+            setSelectedEstado('ALL');
+            setSortBy('MORA_DIAS'); 
+            setCurrentPage(1); 
+          }}
+          className={`text-left border rounded-xl p-4 shadow-xs transition-colors cursor-pointer group ${
+            selectedCuotasVencidas === '4'
+              ? 'bg-rose-50/60 border-rose-400 ring-2 ring-rose-400/20'
+              : 'bg-white border-slate-200 hover:border-rose-300'
+          }`}
         >
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-medium text-slate-500 uppercase tracking-wider">Mora Grave (4+ cuotas)</span>
@@ -416,7 +449,7 @@ export const CobranzasModule: React.FC = () => {
           </div>
           <p className="text-xl font-bold text-slate-900 mt-1">{moraStats.graves}</p>
           <div className="flex items-center justify-between mt-1 text-[11px] text-slate-400">
-            <span>riesgo de resolución</span>
+            <span className="group-hover:text-rose-600 font-medium">Filtrar tabla</span>
             <button
               type="button"
               onClick={(e) => {
@@ -454,17 +487,28 @@ export const CobranzasModule: React.FC = () => {
           <select
             value={selectedCuotasVencidas}
             onChange={(e) => {
-              setSelectedCuotasVencidas(e.target.value);
+              const val = e.target.value;
+              setSelectedCuotasVencidas(val);
+              if (val !== 'ALL' && val !== '0' && (selectedEstado === 'AL DIA' || selectedEstado === 'LIQUIDADO')) {
+                setSelectedEstado('ALL');
+              } else if (val === '0' && selectedEstado === 'EN MORA') {
+                setSelectedEstado('ALL');
+              }
               setCurrentPage(1);
             }}
-            className="w-full px-3 py-2 bg-slate-50 hover:bg-white border border-slate-200 rounded-lg text-slate-700 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500 cursor-pointer font-medium"
+            className={`w-full px-3 py-2 border rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500 cursor-pointer font-medium transition-colors ${
+              selectedCuotasVencidas !== 'ALL'
+                ? 'bg-emerald-50 border-emerald-400 text-emerald-900 font-semibold ring-1 ring-emerald-400/30'
+                : 'bg-slate-50 hover:bg-white border-slate-200 text-slate-700'
+            }`}
           >
             <option value="ALL">Cuotas: Todas</option>
-            <option value="1">1+ cuota vencida</option>
+            <option value="1">1+ cuota vencida (Mora)</option>
             <option value="2">2+ cuotas vencidas</option>
             <option value="3">3+ cuotas vencidas</option>
             <option value="4">4+ cuotas (Grave)</option>
             <option value="6">6+ cuotas (Crítica)</option>
+            <option value="0">Al Día (0 cuotas)</option>
           </select>
         </div>
 
@@ -537,6 +581,97 @@ export const CobranzasModule: React.FC = () => {
           </select>
         </div>
       </div>
+
+      {/* Active filters pill bar */}
+      {(searchTerm || selectedManzana !== 'ALL' || selectedEtapa !== 'ALL' || selectedEstado !== 'ALL' || selectedCuotasVencidas !== 'ALL') && (
+        <div className="flex flex-wrap items-center justify-between gap-2 px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="text-[11px] font-semibold text-slate-600">Filtros activos:</span>
+
+            {selectedCuotasVencidas !== 'ALL' && (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-[11px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300 shadow-2xs">
+                <span>Cuotas: {selectedCuotasVencidas === '0' ? 'Al día (0)' : `${selectedCuotasVencidas}+ vencidas`}</span>
+                <button
+                  type="button"
+                  onClick={() => { setSelectedCuotasVencidas('ALL'); setCurrentPage(1); }}
+                  className="hover:text-emerald-950 cursor-pointer p-0.5"
+                  title="Quitar filtro de cuotas vencidas"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </span>
+            )}
+
+            {selectedEstado !== 'ALL' && (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-[11px] font-medium bg-white text-slate-800 border border-slate-200 shadow-2xs">
+                <span>Estado: {selectedEstado}</span>
+                <button
+                  type="button"
+                  onClick={() => { setSelectedEstado('ALL'); setCurrentPage(1); }}
+                  className="hover:text-slate-950 cursor-pointer p-0.5"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </span>
+            )}
+
+            {selectedManzana !== 'ALL' && (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-[11px] font-medium bg-white text-slate-800 border border-slate-200 shadow-2xs">
+                <span>Mz {selectedManzana}</span>
+                <button
+                  type="button"
+                  onClick={() => { setSelectedManzana('ALL'); setCurrentPage(1); }}
+                  className="hover:text-slate-950 cursor-pointer p-0.5"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </span>
+            )}
+
+            {selectedEtapa !== 'ALL' && (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-[11px] font-medium bg-white text-slate-800 border border-slate-200 shadow-2xs">
+                <span>Etapa {selectedEtapa}</span>
+                <button
+                  type="button"
+                  onClick={() => { setSelectedEtapa('ALL'); setCurrentPage(1); }}
+                  className="hover:text-slate-950 cursor-pointer p-0.5"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </span>
+            )}
+
+            {searchTerm && (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-[11px] font-medium bg-white text-slate-800 border border-slate-200 shadow-2xs">
+                <span>Búsqueda: "{searchTerm}"</span>
+                <button
+                  type="button"
+                  onClick={() => { setSearchTerm(''); setCurrentPage(1); }}
+                  className="hover:text-slate-950 cursor-pointer p-0.5"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </span>
+            )}
+          </div>
+
+          <button
+            type="button"
+            onClick={() => {
+              setSearchTerm('');
+              setSelectedManzana('ALL');
+              setSelectedEtapa('ALL');
+              setSelectedEstado('ALL');
+              setSelectedCuotasVencidas('ALL');
+              setCurrentPage(1);
+            }}
+            className="text-[11px] font-semibold text-slate-600 hover:text-slate-900 underline flex items-center gap-1 cursor-pointer ml-auto"
+          >
+            <RotateCcw className="w-3 h-3 text-slate-500" />
+            <span>Restablecer filtros ({filteredCobranzas.length} contratos)</span>
+          </button>
+        </div>
+      )}
 
       {/* Cobranzas Table */}
       <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-xs">

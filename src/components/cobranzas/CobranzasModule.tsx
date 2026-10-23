@@ -26,7 +26,7 @@ import {
 import { ReporteCuotasVencidasModal } from './ReporteCuotasVencidasModal';
 
 export const CobranzasModule: React.FC = () => {
-  const { cobranzas: rawCobranzas, setSelectedContractForPayment, loading, setIsNuevoClienteModalOpen } = useData();
+  const { cobranzas: rawCobranzas, setSelectedContractForPayment, loading, setIsNuevoClienteModalOpen, pagos = [] } = useData();
 
   // Enrich every contract with its overdue info (cuotas vencidas, monto, días de atraso)
   const cobranzas = useMemo(
@@ -143,6 +143,94 @@ export const CobranzasModule: React.FC = () => {
     return filteredCobranzas.slice(start, start + pageSize);
   }, [filteredCobranzas, currentPage, pageSize]);
 
+  // Map latest payment per contract for instant lookup
+  const latestPagoMap = useMemo(() => {
+    const map = new Map<string, any>();
+    if (!pagos || pagos.length === 0) return map;
+    const sorted = [...pagos].sort((a, b) => (b.fecha_pago || '').localeCompare(a.fecha_pago || ''));
+    for (const p of sorted) {
+      if (p.contrato_id && !map.has(String(p.contrato_id))) {
+        map.set(String(p.contrato_id), p);
+      }
+      if (p.codigo_contrato && !map.has(p.codigo_contrato)) {
+        map.set(p.codigo_contrato, p);
+      }
+    }
+    return map;
+  }, [pagos]);
+
+  // Helper to determine the last payment made by the client (cuota #, month/period, and actual payment date)
+  const MESES_COMPLETOS = [
+    'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+    'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
+  ];
+
+  const getUltimoPagoInfo = (c: ControlCobranza) => {
+    const cuotasPagadas = Number(c.cuotas_pagadas || 0);
+    const isLiquidado = c.estado_cobranza === 'LIQUIDADO' || Number(c.saldo_restante) <= 0;
+    const latestPago = latestPagoMap.get(c.codigo_contrato) || latestPagoMap.get(String(c.contrato_id));
+
+    if (cuotasPagadas <= 0) {
+      const hasInicial = Number(c.monto_inicial || 0) > 0;
+      return {
+        hasPaidCuotas: false,
+        numeroCuota: 0,
+        mesNombre: '',
+        textoCuota: hasInicial ? 'Solo Cuota Inicial' : 'Sin cuotas pagadas',
+        mesOFecha: hasInicial ? `Inicial: S/ ${Number(c.monto_inicial).toLocaleString('es-PE', { minimumFractionDigits: 2 })}` : 'Pendiente 1ra cuota',
+        fechaReal: latestPago?.fecha_pago || null,
+        montoReal: latestPago?.monto || null,
+        metodoPago: latestPago?.metodo_pago || null,
+        isLiquidado: false
+      };
+    }
+
+    // Determine the scheduled month for the last paid installment (cuota #cuotasPagadas)
+    let cuotaDate: Date | null = null;
+    
+    // 1. Calculate from fecha_primer_pago
+    if (c.fecha_primer_pago) {
+      const parts = c.fecha_primer_pago.split('T')[0].split('-').map(Number);
+      if (parts.length === 3 && parts[0] && parts[1] && parts[2]) {
+        const y = parts[0];
+        const m = parts[1] - 1 + (cuotasPagadas - 1);
+        const anchorDay = parts[2];
+        const lastDayOfMonth = new Date(y, m + 1, 0).getDate();
+        cuotaDate = new Date(y, m, Math.min(anchorDay, lastDayOfMonth));
+      }
+    }
+
+    // 2. If fecha_primer_pago is not available, calculate backwards from proximo_vencimiento
+    if (!cuotaDate && c.proximo_vencimiento) {
+      const parts = c.proximo_vencimiento.split('T')[0].split('-').map(Number);
+      if (parts.length === 3 && parts[0] && parts[1] && parts[2]) {
+        const proxNum = Number(c.proximo_numero_cuota) || (cuotasPagadas + 1);
+        const diffCuotas = Math.max(1, proxNum - cuotasPagadas);
+        const y = parts[0];
+        const m = parts[1] - 1 - diffCuotas;
+        const anchorDay = parts[2];
+        const lastDayOfMonth = new Date(y, m + 1, 0).getDate();
+        cuotaDate = new Date(y, m, Math.min(anchorDay, lastDayOfMonth));
+      }
+    }
+
+    const mesNombre = cuotaDate 
+      ? `${MESES_COMPLETOS[cuotaDate.getMonth()]} ${cuotaDate.getFullYear()}` 
+      : '';
+
+    return {
+      hasPaidCuotas: true,
+      numeroCuota: cuotasPagadas,
+      mesNombre,
+      textoCuota: `Cuota #${cuotasPagadas}`,
+      mesOFecha: mesNombre ? `Mes de ${mesNombre}` : '',
+      fechaReal: latestPago?.fecha_pago || null,
+      montoReal: latestPago?.monto || null,
+      metodoPago: latestPago?.metodo_pago || null,
+      isLiquidado
+    };
+  };
+
   // Format Due Date
   const formatDueDate = (dateStr?: string) => {
     if (!dateStr) return '30 Oct 2026';
@@ -174,6 +262,9 @@ export const CobranzasModule: React.FC = () => {
       'Total Cuotas',
       'Cuota Mensual (S/)',
       'Cuotas Pagadas',
+      'Última Cuota Pagada',
+      'Mes / Periodo Último Pago',
+      'Fecha Último Pago Registrado',
       'Cuotas Pendientes',
       'Saldo Restante (S/)',
       'Próxima Cuota N°',
@@ -185,29 +276,35 @@ export const CobranzasModule: React.FC = () => {
       'Estado Cobranza'
     ];
 
-    const rows = filteredCobranzas.map(c => [
-      `"${c.codigo_contrato}"`,
-      `"${c.dni}"`,
-      `"${c.propietario}"`,
-      `"${c.telefono}"`,
-      c.etapa,
-      `"${c.manzana}"`,
-      `"${c.numero_lote}"`,
-      c.precio_venta,
-      c.monto_inicial,
-      c.total_cuotas,
-      c.monto_cuota,
-      c.cuotas_pagadas,
-      c.cuotas_pendientes,
-      c.saldo_restante,
-      c.proximo_numero_cuota,
-      `"${c.proximo_vencimiento}"`,
-      c.mora.cuotasVencidas,
-      `"${c.mora.numerosCuotas.join(' - ')}"`,
-      c.mora.montoVencido.toFixed(2),
-      c.mora.diasAtraso,
-      `"${c.estado_cobranza || (c.saldo_restante === 0 ? 'LIQUIDADO' : 'AL DIA')}"`
-    ]);
+    const rows = filteredCobranzas.map(c => {
+      const pInfo = getUltimoPagoInfo(c);
+      return [
+        `"${c.codigo_contrato}"`,
+        `"${c.dni}"`,
+        `"${c.propietario}"`,
+        `"${c.telefono}"`,
+        c.etapa,
+        `"${c.manzana}"`,
+        `"${c.numero_lote}"`,
+        c.precio_venta,
+        c.monto_inicial,
+        c.total_cuotas,
+        c.monto_cuota,
+        c.cuotas_pagadas,
+        `"${pInfo.hasPaidCuotas ? `Cuota #${pInfo.numeroCuota}` : pInfo.textoCuota}"`,
+        `"${pInfo.mesNombre || pInfo.mesOFecha}"`,
+        `"${pInfo.fechaReal || 'N/D'}"`,
+        c.cuotas_pendientes,
+        c.saldo_restante,
+        c.proximo_numero_cuota,
+        `"${c.proximo_vencimiento}"`,
+        c.mora.cuotasVencidas,
+        `"${c.mora.numerosCuotas.join(' - ')}"`,
+        c.mora.montoVencido.toFixed(2),
+        c.mora.diasAtraso,
+        `"${c.estado_cobranza || (c.saldo_restante === 0 ? 'LIQUIDADO' : 'AL DIA')}"`
+      ];
+    });
 
     const csvContent = '\uFEFF' + [headers.join(','), ...rows.map(r => r.join(','))].join('\r\n');
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -681,8 +778,9 @@ export const CobranzasModule: React.FC = () => {
               <tr>
                 <th className="px-4 py-3">Contrato &amp; Lote</th>
                 <th className="px-4 py-3">Propietario / Contacto</th>
-                <th className="px-4 py-3 w-44">Avance de Cuotas</th>
+                <th className="px-4 py-3 w-40">Avance de Cuotas</th>
                 <th className="px-4 py-3">Deuda Vencida</th>
+                <th className="px-4 py-3">Último Pago Realizado</th>
                 <th className="px-4 py-3">Próximo Vencimiento</th>
                 <th className="px-4 py-3 text-right">Cuota</th>
                 <th className="px-4 py-3 text-right">Saldo Restante</th>
@@ -698,6 +796,7 @@ export const CobranzasModule: React.FC = () => {
                     <td className="px-4 py-3.5"><div className="h-4 bg-slate-100 rounded w-40"></div></td>
                     <td className="px-4 py-3.5"><div className="h-4 bg-slate-100 rounded w-32"></div></td>
                     <td className="px-4 py-3.5"><div className="h-4 bg-slate-100 rounded w-24"></div></td>
+                    <td className="px-4 py-3.5"><div className="h-4 bg-slate-100 rounded w-32"></div></td>
                     <td className="px-4 py-3.5"><div className="h-4 bg-slate-100 rounded w-36"></div></td>
                     <td className="px-4 py-3.5"><div className="h-4 bg-slate-100 rounded w-16 ml-auto"></div></td>
                     <td className="px-4 py-3.5"><div className="h-4 bg-slate-100 rounded w-20 ml-auto"></div></td>
@@ -707,7 +806,7 @@ export const CobranzasModule: React.FC = () => {
                 ))
               ) : paginatedCobranzas.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="px-4 py-12 text-center text-slate-400">
+                  <td colSpan={10} className="px-4 py-12 text-center text-slate-400">
                     <AlertTriangle className="w-6 h-6 text-slate-400 mx-auto mb-2" />
                     <p className="text-xs font-medium text-slate-700">No se encontraron contratos con los filtros aplicados</p>
                     <p className="text-[11px] text-slate-500 mt-0.5">Pruebe ajustando el término de búsqueda o seleccione otra opción</p>
@@ -781,6 +880,60 @@ export const CobranzasModule: React.FC = () => {
                       {/* Deuda Vencida (Mora) */}
                       <td className="px-4 py-3 whitespace-nowrap">
                         {renderMoraCell(c)}
+                      </td>
+
+                      {/* Último Pago Realizado */}
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        {(() => {
+                          const pagoInfo = getUltimoPagoInfo(c);
+
+                          if (isLiquidado && pagoInfo.hasPaidCuotas) {
+                            return (
+                              <div>
+                                <div className="font-semibold text-blue-700 text-xs flex items-center gap-1.5">
+                                  <CheckCircle2 className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                                  <span>{pagoInfo.textoCuota}</span>
+                                </div>
+                                <span className="text-[11px] text-blue-600/80 block mt-0.5">
+                                  {pagoInfo.mesNombre ? `Mes de ${pagoInfo.mesNombre}` : 'Total liquidado'}
+                                </span>
+                              </div>
+                            );
+                          }
+
+                          if (!pagoInfo.hasPaidCuotas) {
+                            return (
+                              <div>
+                                <div className="font-medium text-amber-700 text-xs flex items-center gap-1.5">
+                                  <Clock className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                                  <span>{pagoInfo.textoCuota}</span>
+                                </div>
+                                <span className="text-[11px] text-slate-500 block mt-0.5">
+                                  {pagoInfo.mesOFecha}
+                                </span>
+                              </div>
+                            );
+                          }
+
+                          return (
+                            <div>
+                              <div className="font-medium text-slate-800 text-xs flex items-center gap-1.5">
+                                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                                <span className="font-bold text-emerald-800">{pagoInfo.textoCuota}</span>
+                                {pagoInfo.mesNombre && (
+                                  <span className="text-slate-600 font-semibold">• {pagoInfo.mesNombre}</span>
+                                )}
+                              </div>
+                              <span className="text-[11px] text-slate-500 block mt-0.5">
+                                {pagoInfo.fechaReal ? (
+                                  <>Abono el {formatDueDate(pagoInfo.fechaReal)}</>
+                                ) : (
+                                  <>{pagoInfo.mesOFecha}</>
+                                )}
+                              </span>
+                            </div>
+                          );
+                        })()}
                       </td>
 
                       {/* Próxima Cuota & Vencimiento */}

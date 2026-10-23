@@ -53,6 +53,8 @@ interface CobranzaEnriquecida extends ControlCobranza {
   totalPagado: number;
   porcentajePagado: number;
   porcentajeRestante: number;
+  ultimoPagoTexto?: string;
+  ultimoPagoMes?: string;
 }
 
 type ReportMode = 'ALL' | 'AL_DIA' | 'MORA_1' | 'MORA_2' | 'MORA_3' | 'MORA_4' | 'CUSTOM';
@@ -62,7 +64,7 @@ export const ReporteCuotasVencidasModal: React.FC<ReporteCuotasVencidasModalProp
   onClose,
   initialMinCuotas = 3
 }) => {
-  const { cobranzas = [], clientes = [], contratos = [] } = useData();
+  const { cobranzas = [], clientes = [], contratos = [], pagos = [] } = useData();
 
   // Mode & threshold setup
   const [reportMode, setReportMode] = useState<ReportMode>('MORA_3');
@@ -123,6 +125,39 @@ export const ReporteCuotasVencidasModal: React.FC<ReporteCuotasVencidasModalProp
       const porcentajePagado = valorTerreno > 0 ? (totalPagado / valorTerreno) * 100 : 0;
       const porcentajeRestante = valorTerreno > 0 ? (restaPorPagar / valorTerreno) * 100 : 0;
 
+      // Mes y número de la última cuota pagada
+      const MESES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+      let ultimoPagoMes = '';
+      if (cuotasPagadas > 0) {
+        if (c.fecha_primer_pago) {
+          const parts = c.fecha_primer_pago.split('T')[0].split('-').map(Number);
+          if (parts.length === 3 && parts[0] && parts[1] && parts[2]) {
+            const y = parts[0];
+            const m = parts[1] - 1 + (cuotasPagadas - 1);
+            const anchorDay = parts[2];
+            const lastDay = new Date(y, m + 1, 0).getDate();
+            const d = new Date(y, m, Math.min(anchorDay, lastDay));
+            ultimoPagoMes = `${MESES[d.getMonth()]} ${d.getFullYear()}`;
+          }
+        }
+        if (!ultimoPagoMes && c.proximo_vencimiento) {
+          const parts = c.proximo_vencimiento.split('T')[0].split('-').map(Number);
+          if (parts.length === 3 && parts[0] && parts[1] && parts[2]) {
+            const proxNum = Number(c.proximo_numero_cuota) || (cuotasPagadas + 1);
+            const diffCuotas = Math.max(1, proxNum - cuotasPagadas);
+            const y = parts[0];
+            const m = parts[1] - 1 - diffCuotas;
+            const anchorDay = parts[2];
+            const lastDay = new Date(y, m + 1, 0).getDate();
+            const d = new Date(y, m, Math.min(anchorDay, lastDay));
+            ultimoPagoMes = `${MESES[d.getMonth()]} ${d.getFullYear()}`;
+          }
+        }
+      }
+      const ultimoPagoTexto = cuotasPagadas > 0 
+        ? `Cuota #${cuotasPagadas}${ultimoPagoMes ? ` (${ultimoPagoMes})` : ''}` 
+        : (inicial > 0 ? `Solo Inicial (S/ ${inicial})` : 'Sin cuotas pagadas');
+
       return {
         ...c,
         mora,
@@ -143,7 +178,9 @@ export const ReporteCuotasVencidasModal: React.FC<ReporteCuotasVencidasModalProp
         restaPorPagar,
         totalPagado,
         porcentajePagado,
-        porcentajeRestante
+        porcentajeRestante,
+        ultimoPagoTexto,
+        ultimoPagoMes
       };
     });
   }, [cobranzas, clientes, contratos]);
@@ -299,6 +336,8 @@ export const ReporteCuotasVencidasModal: React.FC<ReporteCuotasVencidasModalProp
         'Monto Inicial Pagado (S/)': Number(c.inicial.toFixed(2)),
         'Cuota Mensual (S/)': Number(c.montoCuota.toFixed(2)),
         'Cuotas Pagadas': c.cuotasPagadas,
+        'Última Cuota Pagada': c.ultimoPagoTexto,
+        'Mes de Último Pago': c.ultimoPagoMes || (c.inicial > 0 ? 'Solo Inicial' : 'Sin pagos'),
         'Total Cuotas del Terreno': c.totalCuotas,
         'Cuotas Restantes': c.cuotasRestantes,
         'Total Pagado a la Fecha (S/)': Number(c.totalPagado.toFixed(2)),
@@ -391,6 +430,8 @@ export const ReporteCuotasVencidasModal: React.FC<ReporteCuotasVencidasModalProp
       'Monto Inicial (S/)',
       'Cuota Mensual (S/)',
       'Cuotas Pagadas',
+      'Última Cuota Pagada',
+      'Mes de Último Pago',
       'Total Cuotas',
       'Cuotas Restantes',
       'Total Pagado (S/)',
@@ -421,6 +462,8 @@ export const ReporteCuotasVencidasModal: React.FC<ReporteCuotasVencidasModalProp
       c.inicial.toFixed(2),
       c.montoCuota.toFixed(2),
       c.cuotasPagadas,
+      `"${c.ultimoPagoTexto || ''}"`,
+      `"${c.ultimoPagoMes || ''}"`,
       c.totalCuotas,
       c.cuotasRestantes,
       c.totalPagado.toFixed(2),
@@ -799,8 +842,12 @@ export const ReporteCuotasVencidasModal: React.FC<ReporteCuotasVencidasModalProp
                                 style={{ width: `${Math.min(100, c.porcentajePagado)}%` }}
                               />
                             </div>
-                            <span className="text-[10px] text-slate-400 block mt-0.5">
-                              Resta: {c.cuotasRestantes} cuotas ({c.porcentajeRestante.toFixed(0)}%)
+                            <span className="text-[10px] block mt-0.5">
+                              {c.cuotasPagadas > 0 ? (
+                                <span className="text-emerald-700 font-medium">Última: Cuota #{c.cuotasPagadas} {c.ultimoPagoMes ? `(${c.ultimoPagoMes})` : ''}</span>
+                              ) : (
+                                <span className="text-slate-400">Resta: {c.cuotasRestantes} cuotas ({c.porcentajeRestante.toFixed(0)}%)</span>
+                              )}
                             </span>
                           </td>
 

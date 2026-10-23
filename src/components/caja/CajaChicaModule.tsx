@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { useData } from '../../context/DataContext';
 import { TipoEgreso, MetodoPago, Pago } from '../../types/database';
 import { VoucherModal } from '../common/VoucherModal';
@@ -33,7 +33,10 @@ import {
   ArrowDownRight,
   ShieldCheck,
   Trash2,
-  AlertTriangle
+  AlertTriangle,
+  Calculator,
+  Sparkles,
+  History
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -97,60 +100,55 @@ const CATEGORIAS_FIJAS: CategoryOption[] = [
   {
     id: 'INFRAESTRUCTURA Y SERVICIO',
     label: 'INFRAESTRUCTURA Y SERVICIO',
-    hint: 'Alquiler, Luz, Internet, Emapica/Agua, Gas'
+    hint: 'Alquiler, Luz, Internet, Emapica/Agua, Telefonía, Gas, Sunat'
   },
   {
     id: 'SUELDOS',
     label: 'SUELDOS',
-    hint: 'Planilla, Pagos administrativos, Personal fijo'
-  },
-  {
-    id: 'OBLIGACIONES Y FINANZAS',
-    label: 'OBLIGACIONES Y FINANZAS',
-    hint: 'Impuestos, Cuotas bancarias fijas'
+    hint: 'Planilla, Pagos a colaboradores, Sueldos del personal fijo'
   },
   {
     id: 'OTRA CATEGORÍA FIJA',
-    label: 'OTRA CATEGORÍA FIJA',
-    hint: 'Permitir escribir una nueva categoría fija'
+    label: 'OTRA CATEGORÍA FIJA (Personalizada)',
+    hint: 'Permite registrar una categoría fija personalizada'
   }
 ];
 
 const CATEGORIAS_VARIABLES: CategoryOption[] = [
   {
-    id: 'PUBLICIDAD Y MARKETING',
-    label: 'PUBLICIDAD Y MARKETING',
-    hint: 'Meta Ads, Volantes, Diseños, Activaciones'
+    id: 'RECREATIVO',
+    label: 'RECREATIVO',
+    hint: 'Refrigerios, Almuerzos de campo, Eventos, Celebraciones'
   },
   {
-    id: 'COMISIONES DE VENTAS',
-    label: 'COMISIONES DE VENTAS',
-    hint: 'Pagos por cierre de lotes a asesores'
+    id: 'MOVILIDAD',
+    label: 'MOVILIDAD',
+    hint: 'Combustible, Pasajes, Traslados y Viáticos'
   },
   {
-    id: 'TRANSPORTE Y MOVILIDAD',
-    label: 'TRANSPORTE Y MOVILIDAD',
-    hint: 'Combustible, Pasajes, Traslados de clientes a campo'
+    id: 'CAMPAÑA',
+    label: 'CAMPAÑA',
+    hint: 'Publicidad, Marketing digital, Meta Ads, Volanteo, Diseños'
   },
   {
-    id: 'MANTENIMIENTO Y OBRAS',
-    label: 'MANTENIMIENTO Y OBRAS',
-    hint: 'Trabajos en proyecto, Limpieza de lotes, Topografía'
+    id: 'COMISIONES',
+    label: 'COMISIONES',
+    hint: 'Comisiones de ventas a asesores y líderes de equipo'
   },
   {
-    id: 'REFRIGERIOS Y EVENTOS',
-    label: 'REFRIGERIOS Y EVENTOS',
-    hint: 'Alimentación de personal en campo, Open House'
+    id: 'MANTENIMIENTO Y SUMINISTRO',
+    label: 'MANTENIMIENTO Y SUMINISTRO',
+    hint: 'Obras en proyecto, Limpieza de lotes, Topografía, Materiales y Útiles'
   },
   {
-    id: 'GASTOS ADMINISTRATIVOS MENORES',
-    label: 'GASTOS ADMINISTRATIVOS MENORES',
-    hint: 'Útiles de oficina, Trámites notariales'
+    id: 'OTROS',
+    label: 'OTROS',
+    hint: 'Gastos diversos, Imprevistos, Trámites menores'
   },
   {
     id: 'OTRA CATEGORÍA VARIABLE',
-    label: 'OTRA CATEGORÍA VARIABLE',
-    hint: 'Permitir escribir una nueva categoría variable'
+    label: 'OTRA CATEGORÍA VARIABLE (Personalizada)',
+    hint: 'Permite registrar una categoría variable personalizada'
   }
 ];
 
@@ -203,6 +201,24 @@ export const CajaChicaModule: React.FC = () => {
   const [monto, setMonto] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  // Description Autocomplete / Memory State
+  const [showDescSuggestions, setShowDescSuggestions] = useState<boolean>(false);
+  const [descActiveIndex, setDescActiveIndex] = useState<number>(-1);
+  const descContainerRef = useRef<HTMLDivElement>(null);
+
+  // Close suggestions when clicking outside
+  useEffect(() => {
+    const handleOutsideClick = (event: MouseEvent) => {
+      if (descContainerRef.current && !descContainerRef.current.contains(event.target as Node)) {
+        setShowDescSuggestions(false);
+      }
+    };
+    document.addEventListener('mousedown', handleOutsideClick);
+    return () => {
+      document.removeEventListener('mousedown', handleOutsideClick);
+    };
+  }, []);
 
   // 1. Available Months combined from both Pagos and Egresos
   const availableMonths = useMemo(() => {
@@ -305,6 +321,11 @@ export const CajaChicaModule: React.FC = () => {
     return filteredPagos.slice(start, start + ingresosPageSize);
   }, [filteredPagos, ingresosPage]);
 
+  // Total sum of filtered pagos
+  const filteredPagosTotal = useMemo(() => {
+    return filteredPagos.reduce((sum, p) => sum + Number(p.monto || 0), 0);
+  }, [filteredPagos]);
+
   // Ingresos Summary for active month/filter
   const ingresosSummary = useMemo(() => {
     const list = selectedMonth === 'ALL' ? pagos : pagos.filter(p => (p.fecha_pago || '').slice(0, 7) === selectedMonth);
@@ -348,6 +369,8 @@ export const CajaChicaModule: React.FC = () => {
     setDescripcion('');
     setMonto('');
     setErrorMsg(null);
+    setShowDescSuggestions(false);
+    setDescActiveIndex(-1);
     setShowAddModal(true);
   };
 
@@ -408,6 +431,11 @@ export const CajaChicaModule: React.FC = () => {
     return filteredEgresos.slice(start, start + egresosPageSize);
   }, [filteredEgresos, egresosPage]);
 
+  // Total sum of filtered egresos (Sumador)
+  const filteredEgresosTotal = useMemo(() => {
+    return filteredEgresos.reduce((sum, e) => sum + Number(e.monto || 0), 0);
+  }, [filteredEgresos]);
+
   // Overall Financial Balance for the selected month
   const balanceNeto = useMemo(() => {
     const ing = ingresosSummary.total;
@@ -416,6 +444,94 @@ export const CajaChicaModule: React.FC = () => {
     const margen = ing > 0 ? Math.round((neto / ing) * 100) : 0;
     return { ing, egr, neto, margen };
   }, [ingresosSummary, egresosSummary]);
+
+  // Memory of all unique expense concepts registered in Supabase
+  const egresosMemory = useMemo(() => {
+    const memoryMap = new Map<string, {
+      displayDesc: string;
+      categoria: string;
+      tipo: TipoEgreso;
+      monto: number;
+      count: number;
+      fechaUltimo: string;
+    }>();
+
+    // Sort ascending by date so newer records update the casing & latest habitual amount
+    const sorted = [...egresos].sort((a, b) => (a.fecha || '').localeCompare(b.fecha || ''));
+
+    sorted.forEach((e) => {
+      const raw = (e.descripcion || '').trim();
+      if (!raw) return;
+      const key = raw.toLowerCase();
+
+      const existing = memoryMap.get(key);
+      if (!existing) {
+        memoryMap.set(key, {
+          displayDesc: raw,
+          categoria: e.categoria || 'OTROS',
+          tipo: (e.tipo as TipoEgreso) || 'VARIABLE',
+          monto: Number(e.monto || 0),
+          count: 1,
+          fechaUltimo: e.fecha || ''
+        });
+      } else {
+        existing.count += 1;
+        existing.displayDesc = raw; // keep latest casing
+        if (e.categoria) existing.categoria = e.categoria;
+        if (e.tipo) existing.tipo = e.tipo as TipoEgreso;
+        if (Number(e.monto) > 0) existing.monto = Number(e.monto);
+        if (e.fecha) existing.fechaUltimo = e.fecha;
+      }
+    });
+
+    return Array.from(memoryMap.values()).sort((a, b) => b.count - a.count);
+  }, [egresos]);
+
+  // Live matching suggestions for description input
+  const descSuggestions = useMemo(() => {
+    const q = (descripcion || '').trim().toLowerCase();
+    if (!q) {
+      // Return top 5 most frequent concepts when input is empty
+      return egresosMemory.slice(0, 5);
+    }
+    return egresosMemory
+      .filter(item => item.displayDesc.toLowerCase().includes(q))
+      .slice(0, 8);
+  }, [egresosMemory, descripcion]);
+
+  const handleSelectDescSuggestion = (item: {
+    displayDesc: string;
+    categoria: string;
+    tipo: TipoEgreso;
+    monto: number;
+  }) => {
+    setDescripcion(item.displayDesc);
+
+    // Auto-select corresponding Tipo & Category
+    if (item.tipo === 'FIJO' || item.tipo === 'VARIABLE') {
+      setTipo(item.tipo);
+      const catList = item.tipo === 'FIJO' ? CATEGORIAS_FIJAS : CATEGORIAS_VARIABLES;
+      const found = catList.find(c => c.id.toUpperCase() === item.categoria.toUpperCase());
+      if (found) {
+        setCategoria(found.id);
+        setCustomCategoria('');
+      } else {
+        setCategoria(item.tipo === 'FIJO' ? 'OTRA CATEGORÍA FIJA' : 'OTRA CATEGORÍA VARIABLE');
+        setCustomCategoria(item.categoria);
+      }
+    }
+
+    // Auto-fill amount if current amount is empty or 0
+    if ((!monto || parseFloat(monto) <= 0) && item.monto > 0) {
+      setMonto(item.monto.toFixed(2));
+      toast.info(`Monto sugerido aplicado: S/ ${item.monto.toLocaleString('es-PE', { minimumFractionDigits: 2 })}`, {
+        duration: 3000
+      });
+    }
+
+    setShowDescSuggestions(false);
+    setDescActiveIndex(-1);
+  };
 
   const handleSubmitEgreso = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -460,6 +576,8 @@ export const CajaChicaModule: React.FC = () => {
         setDescripcion('');
         setMonto('');
         setCustomCategoria('');
+        setShowDescSuggestions(false);
+        setDescActiveIndex(-1);
       } else {
         const errDescription = res.error || 'No se pudo guardar el gasto en Supabase.';
         setErrorMsg(errDescription);
@@ -544,6 +662,67 @@ export const CajaChicaModule: React.FC = () => {
         return (
           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-slate-50 text-slate-700 border border-slate-200">
             {metodo}
+          </span>
+        );
+    }
+  };
+
+  // Badge for expense categories
+  const renderCategoryBadge = (categoria: string) => {
+    const cat = (categoria || 'OTROS').toUpperCase().trim();
+    switch (cat) {
+      case 'INFRAESTRUCTURA Y SERVICIO':
+        return (
+          <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold bg-blue-50 text-blue-700 border border-blue-200">
+            INFRAESTRUCTURA Y SERVICIO
+          </span>
+        );
+      case 'SUELDOS':
+        return (
+          <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200">
+            SUELDOS
+          </span>
+        );
+      case 'RECREATIVO':
+        return (
+          <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold bg-pink-50 text-pink-700 border border-pink-200">
+            RECREATIVO
+          </span>
+        );
+      case 'MOVILIDAD':
+        return (
+          <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold bg-sky-50 text-sky-700 border border-sky-200">
+            MOVILIDAD
+          </span>
+        );
+      case 'CAMPAÑA':
+        return (
+          <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold bg-rose-50 text-rose-700 border border-rose-200">
+            CAMPAÑA
+          </span>
+        );
+      case 'COMISIONES':
+        return (
+          <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+            COMISIONES
+          </span>
+        );
+      case 'MANTENIMIENTO Y SUMINISTRO':
+        return (
+          <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold bg-amber-50 text-amber-800 border border-amber-200">
+            MANTENIMIENTO Y SUMINISTRO
+          </span>
+        );
+      case 'OTROS':
+        return (
+          <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold bg-slate-100 text-slate-700 border border-slate-200">
+            OTROS
+          </span>
+        );
+      default:
+        return (
+          <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold bg-slate-100 text-slate-700 border border-slate-200 truncate max-w-[200px]" title={cat}>
+            {cat}
           </span>
         );
     }
@@ -1023,6 +1202,69 @@ export const CajaChicaModule: React.FC = () => {
             </div>
           </div>
 
+          {/* Live Sumador / Accumulator Banner for Ingresos */}
+          <div className="bg-linear-to-r from-emerald-50/70 via-white to-slate-50/60 border border-emerald-200/80 rounded-xl p-3.5 sm:p-4 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-emerald-100/80 border border-emerald-200 text-emerald-700 flex items-center justify-center shrink-0 shadow-xs">
+                <Calculator className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-xs font-bold text-slate-800">
+                    Sumador de Ingresos
+                  </span>
+                  <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200">
+                    {filteredPagos.length} {filteredPagos.length === 1 ? 'pago' : 'pagos'}
+                  </span>
+                  {ingresosMethod !== 'ALL' && (
+                    <span className="text-[10px] font-medium px-2 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-200">
+                      Canal: {ingresosMethod}
+                    </span>
+                  )}
+                  {ingresosSearch.trim() && (
+                    <span className="inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded bg-amber-50 text-amber-800 border border-amber-200">
+                      <span>Búsqueda: "{ingresosSearch}"</span>
+                      <button
+                        onClick={() => { setIngresosSearch(''); setIngresosPage(1); }}
+                        className="hover:text-amber-950 cursor-pointer"
+                        title="Limpiar búsqueda"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </span>
+                  )}
+                </div>
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  {selectedMonth === 'ALL' ? 'Total recaudado en todo el historial' : `Total recaudado en el periodo ${formatMonthLabel(selectedMonth)}`}
+                  {ingresosSearch.trim() || ingresosMethod !== 'ALL' ? ' con los filtros activos' : ''}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between w-full sm:w-auto sm:justify-end gap-3 sm:border-l sm:border-emerald-200/60 sm:pl-5">
+              <div className="text-left sm:text-right">
+                <span className="block text-[10px] uppercase font-bold text-slate-400 tracking-wider">
+                  Monto Total Recaudado
+                </span>
+                <span className="text-xl sm:text-2xl font-black text-emerald-600 tracking-tight">
+                  S/ {filteredPagosTotal.toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </span>
+              </div>
+              {(ingresosSearch.trim() || ingresosMethod !== 'ALL') && (
+                <button
+                  onClick={() => {
+                    setIngresosSearch('');
+                    setIngresosMethod('ALL');
+                    setIngresosPage(1);
+                  }}
+                  className="px-2.5 py-1.5 rounded-lg text-[11px] font-semibold text-slate-600 hover:text-slate-900 bg-white hover:bg-slate-100 border border-slate-200 shadow-xs cursor-pointer transition-colors"
+                >
+                  Restablecer
+                </button>
+              )}
+            </div>
+          </div>
+
           {/* Pagos Table */}
           <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-xs">
             <div className="overflow-x-auto">
@@ -1129,15 +1371,37 @@ export const CajaChicaModule: React.FC = () => {
                     ))
                   )}
                 </tbody>
+                {/* Official Table Foot with Live Total */}
+                {filteredPagos.length > 0 && (
+                  <tfoot className="bg-slate-50/90 font-semibold text-slate-900 border-t-2 border-slate-200">
+                    <tr>
+                      <td colSpan={6} className="px-4 py-3 text-right text-xs uppercase tracking-wider text-slate-600">
+                        <div className="inline-flex items-center gap-1.5 justify-end">
+                          <Calculator className="w-3.5 h-3.5 text-slate-500" />
+                          <span>Total Recaudación Filtrada ({filteredPagos.length} {filteredPagos.length === 1 ? 'pago' : 'pagos'}):</span>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-right whitespace-nowrap font-black text-emerald-700 text-sm">
+                        S/ {filteredPagosTotal.toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </td>
+                      <td className="px-4 py-3"></td>
+                    </tr>
+                  </tfoot>
+                )}
               </table>
             </div>
 
             {/* Pagination Footer */}
             <div className="p-3 bg-white border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500">
-              <div>
+              <div className="flex items-center gap-2 flex-wrap">
                 <span>Página <b>{ingresosPage}</b> de <b>{ingresosTotalPages}</b></span>
-                <span className="mx-2">•</span>
+                <span className="text-slate-300">•</span>
                 <span>Total <b>{filteredPagos.length}</b> pagos mostrados</span>
+                <span className="text-slate-300">•</span>
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md bg-emerald-50 text-emerald-700 font-bold border border-emerald-200/70 text-xs">
+                  <Calculator className="w-3.5 h-3.5" />
+                  <span>Suma Total: S/ {filteredPagosTotal.toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                </span>
               </div>
 
               <div className="flex items-center gap-2">
@@ -1263,7 +1527,7 @@ export const CajaChicaModule: React.FC = () => {
                   <button
                     key={idx}
                     onClick={() => {
-                      setSelectedCategoria(cat.categoria);
+                      setSelectedCategoria(prev => prev === cat.categoria ? 'ALL' : cat.categoria);
                       setEgresosPage(1);
                     }}
                     className={`p-2.5 rounded-lg border text-left transition-all cursor-pointer ${
@@ -1293,31 +1557,70 @@ export const CajaChicaModule: React.FC = () => {
 
           {/* Egresos Filters & Search */}
           <div className="bg-white border border-slate-200 rounded-xl p-3 shadow-xs flex flex-col sm:flex-row items-center justify-between gap-3">
-            <div className="flex items-center gap-1 p-1 bg-slate-100 rounded-lg w-fit border border-slate-200">
-              <button
-                onClick={() => { setSelectedTipo('ALL'); setEgresosPage(1); }}
-                className={`px-3 py-1 rounded-md text-xs font-medium cursor-pointer ${
-                  selectedTipo === 'ALL' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600'
-                }`}
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="flex items-center gap-1 p-1 bg-slate-100 rounded-lg w-fit border border-slate-200">
+                <button
+                  onClick={() => { setSelectedTipo('ALL'); setEgresosPage(1); }}
+                  className={`px-3 py-1 rounded-md text-xs font-medium cursor-pointer ${
+                    selectedTipo === 'ALL' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600'
+                  }`}
+                >
+                  Todos
+                </button>
+                <button
+                  onClick={() => { setSelectedTipo('FIJO'); setEgresosPage(1); }}
+                  className={`px-3 py-1 rounded-md text-xs font-medium cursor-pointer ${
+                    selectedTipo === 'FIJO' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600'
+                  }`}
+                >
+                  Fijos
+                </button>
+                <button
+                  onClick={() => { setSelectedTipo('VARIABLE'); setEgresosPage(1); }}
+                  className={`px-3 py-1 rounded-md text-xs font-medium cursor-pointer ${
+                    selectedTipo === 'VARIABLE' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600'
+                  }`}
+                >
+                  Variables
+                </button>
+              </div>
+
+              {/* Category Dropdown Filter */}
+              <select
+                value={selectedCategoria}
+                onChange={(e) => {
+                  setSelectedCategoria(e.target.value);
+                  setEgresosPage(1);
+                }}
+                className="px-2.5 py-1.5 bg-slate-50 hover:bg-white focus:bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-700 focus:outline-none focus:ring-1 focus:ring-emerald-500 cursor-pointer"
               >
-                Todos
-              </button>
-              <button
-                onClick={() => { setSelectedTipo('FIJO'); setEgresosPage(1); }}
-                className={`px-3 py-1 rounded-md text-xs font-medium cursor-pointer ${
-                  selectedTipo === 'FIJO' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600'
-                }`}
-              >
-                Fijos
-              </button>
-              <button
-                onClick={() => { setSelectedTipo('VARIABLE'); setEgresosPage(1); }}
-                className={`px-3 py-1 rounded-md text-xs font-medium cursor-pointer ${
-                  selectedTipo === 'VARIABLE' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600'
-                }`}
-              >
-                Variables
-              </button>
+                <option value="ALL">Todas las Categorías</option>
+                <optgroup label="Gastos Fijos">
+                  <option value="INFRAESTRUCTURA Y SERVICIO">INFRAESTRUCTURA Y SERVICIO</option>
+                  <option value="SUELDOS">SUELDOS</option>
+                </optgroup>
+                <optgroup label="Gastos Variables">
+                  <option value="RECREATIVO">RECREATIVO</option>
+                  <option value="MOVILIDAD">MOVILIDAD</option>
+                  <option value="CAMPAÑA">CAMPAÑA</option>
+                  <option value="COMISIONES">COMISIONES</option>
+                  <option value="MANTENIMIENTO Y SUMINISTRO">MANTENIMIENTO Y SUMINISTRO</option>
+                  <option value="OTROS">OTROS</option>
+                </optgroup>
+              </select>
+
+              {selectedCategoria !== 'ALL' && (
+                <button
+                  onClick={() => {
+                    setSelectedCategoria('ALL');
+                    setEgresosPage(1);
+                  }}
+                  className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 cursor-pointer transition-colors"
+                >
+                  <span>Filtro: {selectedCategoria}</span>
+                  <X className="w-3 h-3" />
+                </button>
+              )}
             </div>
 
             <div className="relative w-full sm:w-72">
@@ -1329,6 +1632,75 @@ export const CajaChicaModule: React.FC = () => {
                 placeholder="Buscar por concepto o proveedor..."
                 className="w-full pl-9 pr-3 py-2 bg-slate-50 hover:bg-white focus:bg-white border border-slate-200 rounded-lg text-slate-800 placeholder-slate-400 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500 transition-colors"
               />
+            </div>
+          </div>
+
+          {/* Live Sumador / Accumulator Banner */}
+          <div className="bg-linear-to-r from-rose-50/70 via-white to-slate-50/60 border border-rose-200/80 rounded-xl p-3.5 sm:p-4 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-rose-100/80 border border-rose-200 text-rose-700 flex items-center justify-center shrink-0 shadow-xs">
+                <Calculator className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-xs font-bold text-slate-800">
+                    Sumador de Egresos
+                  </span>
+                  <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-rose-100 text-rose-800 border border-rose-200">
+                    {filteredEgresos.length} {filteredEgresos.length === 1 ? 'egreso' : 'egresos'}
+                  </span>
+                  {selectedTipo !== 'ALL' && (
+                    <span className="text-[10px] font-medium px-2 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-200">
+                      Tipo: {selectedTipo}
+                    </span>
+                  )}
+                  {selectedCategoria !== 'ALL' && (
+                    <span className="text-[10px] font-medium px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200">
+                      Cat: {selectedCategoria}
+                    </span>
+                  )}
+                  {searchDescription.trim() && (
+                    <span className="inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded bg-amber-50 text-amber-800 border border-amber-200">
+                      <span>Búsqueda: "{searchDescription}"</span>
+                      <button
+                        onClick={() => { setSearchDescription(''); setEgresosPage(1); }}
+                        className="hover:text-amber-950 cursor-pointer"
+                        title="Limpiar búsqueda"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </span>
+                  )}
+                </div>
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  {selectedMonth === 'ALL' ? 'Total acumulado en todo el historial' : `Total acumulado en el periodo ${formatMonthLabel(selectedMonth)}`}
+                  {searchDescription.trim() || selectedTipo !== 'ALL' || selectedCategoria !== 'ALL' ? ' con los filtros activos' : ''}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between w-full sm:w-auto sm:justify-end gap-3 sm:border-l sm:border-rose-200/60 sm:pl-5">
+              <div className="text-left sm:text-right">
+                <span className="block text-[10px] uppercase font-bold text-slate-400 tracking-wider">
+                  Monto Total Filtrado
+                </span>
+                <span className="text-xl sm:text-2xl font-black text-rose-600 tracking-tight">
+                  S/ {filteredEgresosTotal.toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </span>
+              </div>
+              {(searchDescription.trim() || selectedTipo !== 'ALL' || selectedCategoria !== 'ALL') && (
+                <button
+                  onClick={() => {
+                    setSearchDescription('');
+                    setSelectedTipo('ALL');
+                    setSelectedCategoria('ALL');
+                    setEgresosPage(1);
+                  }}
+                  className="px-2.5 py-1.5 rounded-lg text-[11px] font-semibold text-slate-600 hover:text-slate-900 bg-white hover:bg-slate-100 border border-slate-200 shadow-xs cursor-pointer transition-colors"
+                >
+                  Restablecer
+                </button>
+              )}
             </div>
           </div>
 
@@ -1384,10 +1756,8 @@ export const CajaChicaModule: React.FC = () => {
                             </span>
                           )}
                         </td>
-                        <td className="px-4 py-3">
-                          <span className="text-xs font-medium text-slate-700 block truncate max-w-[200px]">
-                            {egr.categoria}
-                          </span>
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          {renderCategoryBadge(egr.categoria)}
                         </td>
                         <td className="px-4 py-3 text-slate-600">
                           {highlightMatch(egr.descripcion, searchDescription)}
@@ -1399,15 +1769,36 @@ export const CajaChicaModule: React.FC = () => {
                     ))
                   )}
                 </tbody>
+                {/* Official Table Foot with Live Total */}
+                {filteredEgresos.length > 0 && (
+                  <tfoot className="bg-slate-50/90 font-semibold text-slate-900 border-t-2 border-slate-200">
+                    <tr>
+                      <td colSpan={4} className="px-4 py-3 text-right text-xs uppercase tracking-wider text-slate-600">
+                        <div className="inline-flex items-center gap-1.5 justify-end">
+                          <Calculator className="w-3.5 h-3.5 text-slate-500" />
+                          <span>Total Sumatoria ({filteredEgresos.length} {filteredEgresos.length === 1 ? 'egreso' : 'egresos'}):</span>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-right whitespace-nowrap font-black text-rose-700 text-sm">
+                        S/ {filteredEgresosTotal.toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </td>
+                    </tr>
+                  </tfoot>
+                )}
               </table>
             </div>
 
             {/* Pagination Footer */}
             <div className="p-3 bg-white border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500">
-              <div>
+              <div className="flex items-center gap-2 flex-wrap">
                 <span>Página <b>{egresosPage}</b> de <b>{egresosTotalPages}</b></span>
-                <span className="mx-2">•</span>
+                <span className="text-slate-300">•</span>
                 <span>Total <b>{filteredEgresos.length}</b> egresos</span>
+                <span className="text-slate-300">•</span>
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md bg-rose-50 text-rose-700 font-bold border border-rose-200/70 text-xs">
+                  <Calculator className="w-3.5 h-3.5" />
+                  <span>Suma Total: S/ {filteredEgresosTotal.toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                </span>
               </div>
 
               <div className="flex items-center gap-2">
@@ -1479,7 +1870,7 @@ export const CajaChicaModule: React.FC = () => {
                     }`}
                   >
                     <span className={`w-2 h-2 rounded-full ${tipo === 'FIJO' ? 'bg-slate-800' : 'bg-slate-300'}`} />
-                    <span>FIJO (Costos Fijos)</span>
+                    <span>GASTOS FIJOS</span>
                   </button>
 
                   <button
@@ -1492,7 +1883,7 @@ export const CajaChicaModule: React.FC = () => {
                     }`}
                   >
                     <span className={`w-2 h-2 rounded-full ${tipo === 'VARIABLE' ? 'bg-amber-500' : 'bg-slate-300'}`} />
-                    <span>VARIABLE (Operativo)</span>
+                    <span>GASTOS VARIABLES</span>
                   </button>
                 </div>
               </div>
@@ -1500,7 +1891,7 @@ export const CajaChicaModule: React.FC = () => {
               {/* 2. Categoría Dependiente */}
               <div>
                 <label className="block text-slate-700 mb-1 font-medium text-[11px]">
-                  Categoría ({tipo === 'FIJO' ? 'Fija' : 'Variable'}) <span className="text-rose-500">*</span>
+                  Categoría ({tipo === 'FIJO' ? 'Gastos Fijos' : 'Gastos Variables'}) <span className="text-rose-500">*</span>
                 </label>
                 <select
                   value={categoria}
@@ -1558,19 +1949,117 @@ export const CajaChicaModule: React.FC = () => {
                 </div>
               </div>
 
-              {/* 4. Descripción o Concepto */}
-              <div>
-                <label className="block text-slate-700 mb-1 font-medium text-[11px]">
-                  Descripción o Concepto <span className="text-rose-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  value={descripcion}
-                  onChange={(e) => setDescripcion(e.target.value)}
-                  placeholder="Ej: Pago de luz oficina central, Campaña Meta Ads Lotes Etapa 2..."
-                  className="w-full px-3 py-2 bg-slate-50 hover:bg-white focus:bg-white border border-slate-200 rounded-lg text-slate-800 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500 transition-colors"
-                  required
-                />
+              {/* 4. Descripción o Concepto con Memoria Inteligente de la BD */}
+              <div className="relative" ref={descContainerRef}>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-slate-700 font-medium text-[11px]">
+                    Descripción o Concepto <span className="text-rose-500">*</span>
+                  </label>
+                  <span className="inline-flex items-center gap-1 text-[10px] text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200/80 font-medium">
+                    <Sparkles className="w-2.5 h-2.5 text-emerald-600 animate-pulse" />
+                    <span>Memoria ({egresosMemory.length} conceptos)</span>
+                  </span>
+                </div>
+
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={descripcion}
+                    onChange={(e) => {
+                      setDescripcion(e.target.value);
+                      setShowDescSuggestions(true);
+                      setDescActiveIndex(-1);
+                    }}
+                    onFocus={() => setShowDescSuggestions(true)}
+                    onKeyDown={(e) => {
+                      if (!showDescSuggestions || descSuggestions.length === 0) return;
+                      if (e.key === 'ArrowDown') {
+                        e.preventDefault();
+                        setDescActiveIndex(prev => (prev + 1) % descSuggestions.length);
+                      } else if (e.key === 'ArrowUp') {
+                        e.preventDefault();
+                        setDescActiveIndex(prev => (prev - 1 + descSuggestions.length) % descSuggestions.length);
+                      } else if (e.key === 'Enter' && descActiveIndex >= 0) {
+                        e.preventDefault();
+                        handleSelectDescSuggestion(descSuggestions[descActiveIndex]);
+                      } else if (e.key === 'Escape') {
+                        setShowDescSuggestions(false);
+                      }
+                    }}
+                    placeholder="Ej: SUELDO SANDRA, PAGO LUZ, ALQUILER OFICINA..."
+                    className="w-full pl-3 pr-8 py-2 bg-slate-50 hover:bg-white focus:bg-white border border-slate-200 rounded-lg text-slate-800 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500 transition-colors"
+                    required
+                    autoComplete="off"
+                  />
+                  {descripcion.trim() && (
+                    <button
+                      type="button"
+                      onClick={() => { setDescripcion(''); setShowDescSuggestions(true); }}
+                      className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600 cursor-pointer"
+                      title="Borrar texto"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+
+                {/* Floating Suggestions Dropdown */}
+                {showDescSuggestions && descSuggestions.length > 0 && (
+                  <div className="absolute top-full left-0 right-0 mt-1 z-50 bg-white border border-slate-200 rounded-xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-100 max-h-56 overflow-y-auto">
+                    <div className="px-3 py-1.5 bg-slate-50 border-b border-slate-100 flex items-center justify-between text-[10px] text-slate-500 font-medium">
+                      <span className="flex items-center gap-1 text-slate-700">
+                        <History className="w-3 h-3 text-emerald-600" />
+                        {descripcion.trim() ? 'Recomendaciones en base a la BD:' : 'Gastos frecuentes registrados:'}
+                      </span>
+                      <span className="text-slate-400">↑ ↓ o clic para auto-llenar</span>
+                    </div>
+
+                    <div className="divide-y divide-slate-100">
+                      {descSuggestions.map((item, idx) => {
+                        const isSelected = idx === descActiveIndex;
+                        return (
+                          <button
+                            key={`${item.displayDesc}-${idx}`}
+                            type="button"
+                            onClick={() => handleSelectDescSuggestion(item)}
+                            onMouseEnter={() => setDescActiveIndex(idx)}
+                            className={`w-full text-left px-3 py-2 flex items-center justify-between gap-2 transition-colors cursor-pointer text-xs ${
+                              isSelected ? 'bg-emerald-50/90 text-emerald-950' : 'hover:bg-slate-50/90 text-slate-800'
+                            }`}
+                          >
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-1.5 font-bold text-xs text-slate-900 truncate">
+                                <span>{highlightMatch(item.displayDesc, descripcion)}</span>
+                              </div>
+                              <div className="flex items-center gap-1.5 mt-0.5 text-[10px] text-slate-500 flex-wrap">
+                                <span className={`px-1.5 py-0.2 rounded font-semibold text-[9px] ${
+                                  item.tipo === 'FIJO' ? 'bg-slate-100 text-slate-700 border border-slate-200' : 'bg-amber-50 text-amber-700 border border-amber-200'
+                                }`}>
+                                  {item.tipo}
+                                </span>
+                                <span>•</span>
+                                <span className="text-emerald-700 font-medium">{item.categoria}</span>
+                                <span>•</span>
+                                <span className="text-slate-400">{item.count} {item.count === 1 ? 'registro' : 'registros'}</span>
+                              </div>
+                            </div>
+
+                            <div className="text-right shrink-0">
+                              {item.monto > 0 && (
+                                <span className="text-xs font-bold text-rose-700 block">
+                                  S/ {item.monto.toLocaleString('es-PE', { minimumFractionDigits: 2 })}
+                                </span>
+                              )}
+                              <span className="text-[10px] text-slate-400 block font-normal">
+                                habitual
+                              </span>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* 5. Monto en Soles */}

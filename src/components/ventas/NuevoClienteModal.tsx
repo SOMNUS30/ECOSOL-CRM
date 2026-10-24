@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useData } from '../../context/DataContext';
 import { Cliente } from '../../types/database';
 import { toast } from 'sonner';
@@ -11,8 +11,16 @@ import {
   MapPin, 
   Check, 
   AlertCircle,
-  CreditCard
+  CreditCard,
+  Building2,
+  Navigation
 } from 'lucide-react';
+import { SearchableSelect } from '../common/SearchableSelect';
+import { 
+  DEPARTAMENTOS_PERU, 
+  getProvinciasByDepartamento, 
+  getDistritosByProvincia 
+} from '../../data/peruUbigeo';
 
 interface NuevoClienteModalProps {
   isOpen: boolean;
@@ -32,12 +40,42 @@ export const NuevoClienteModal: React.FC<NuevoClienteModalProps> = ({
   const [telefono, setTelefono] = useState('');
   const [correo, setCorreo] = useState('');
   const [direccion, setDireccion] = useState('');
-  const [distrito, setDistrito] = useState('Ica');
-  const [provincia, setProvincia] = useState('Ica');
   const [departamento, setDepartamento] = useState('Ica');
+  const [provincia, setProvincia] = useState('Ica');
+  const [distrito, setDistrito] = useState('Ica');
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  // Ubigeo Cascading Options
+  const departamentosOptions = DEPARTAMENTOS_PERU;
+
+  const provinciasOptions = useMemo(() => {
+    return getProvinciasByDepartamento(departamento);
+  }, [departamento]);
+
+  const distritosOptions = useMemo(() => {
+    return getDistritosByProvincia(departamento, provincia);
+  }, [departamento, provincia]);
+
+  const handleDepartamentoChange = (newDep: string) => {
+    setDepartamento(newDep);
+    const provs = getProvinciasByDepartamento(newDep);
+    const firstProv = provs[0] || '';
+    setProvincia(firstProv);
+    const dists = getDistritosByProvincia(newDep, firstProv);
+    setDistrito(dists[0] || '');
+  };
+
+  const handleProvinciaChange = (newProv: string) => {
+    setProvincia(newProv);
+    const dists = getDistritosByProvincia(departamento, newProv);
+    setDistrito(dists[0] || '');
+  };
+
+  const handleDistritoChange = (newDist: string) => {
+    setDistrito(newDist);
+  };
 
   if (!isOpen) return null;
 
@@ -107,6 +145,8 @@ export const NuevoClienteModal: React.FC<NuevoClienteModalProps> = ({
         setTelefono('');
         setCorreo('');
         setDireccion('');
+        setDepartamento('Ica');
+        setProvincia('Ica');
         setDistrito('Ica');
 
         onClose();
@@ -156,7 +196,7 @@ export const NuevoClienteModal: React.FC<NuevoClienteModalProps> = ({
         )}
 
         {/* Scrollable Form Body */}
-        <form onSubmit={handleSubmit} className="overflow-y-auto space-y-3.5 text-xs pr-1">
+        <form onSubmit={handleSubmit} className="overflow-y-auto space-y-3.5 text-xs pr-1 pb-16">
           {/* Row 1: DNI & Teléfono */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
@@ -250,50 +290,52 @@ export const NuevoClienteModal: React.FC<NuevoClienteModalProps> = ({
             </div>
           </div>
 
-          {/* Row 5: Distrito, Provincia, Departamento */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-            <div>
-              <label className="block text-[11px] font-medium text-slate-700 mb-1">
-                Distrito
-              </label>
-              <select
-                value={distrito}
-                onChange={(e) => setDistrito(e.target.value)}
-                className="w-full px-2.5 py-2 bg-white border border-slate-200 rounded-lg text-slate-900 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500 cursor-pointer"
-              >
-                <option value="Ica">Ica</option>
-                <option value="Parcona">Parcona</option>
-                <option value="Subtanjalla">Subtanjalla</option>
-                <option value="La Tinguiña">La Tinguiña</option>
-                <option value="Santiago">Santiago</option>
-                <option value="Los Aquijes">Los Aquijes</option>
-                <option value="Chincha Alta">Chincha Alta</option>
-                <option value="Pisco">Pisco</option>
-                <option value="Lima">Lima</option>
-              </select>
+          {/* Ubicación Geográfica: Departamento -> Provincia -> Distrito en Cascada con Búsqueda */}
+          <div className="p-3 bg-slate-50/70 border border-slate-200 rounded-xl space-y-2.5">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-bold text-slate-800 flex items-center gap-1.5">
+                <Navigation className="w-3.5 h-3.5 text-emerald-600" />
+                <span>Ubicación Domiciliaria (Perú)</span>
+              </span>
+              <span className="text-[10px] text-slate-400 font-medium">
+                Cascada y búsqueda en tiempo real
+              </span>
             </div>
 
-            <div>
-              <label className="block text-[11px] font-medium text-slate-700 mb-1">
-                Provincia
-              </label>
-              <input
-                type="text"
-                value={provincia}
-                onChange={(e) => setProvincia(e.target.value)}
-                className="w-full px-2.5 py-2 bg-white border border-slate-200 rounded-lg text-slate-900 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500"
-              />
-            </div>
-
-            <div>
-              <label className="block text-[11px] font-medium text-slate-700 mb-1">
-                Departamento
-              </label>
-              <input
-                type="text"
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+              {/* 1. Departamento */}
+              <SearchableSelect
+                label="Departamento"
                 value={departamento}
-                onChange={(e) => setDepartamento(e.target.value)}
-                className="w-full px-2.5 py-2 bg-white border border-slate-200 rounded-lg text-slate-900 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                onChange={handleDepartamentoChange}
+                options={departamentosOptions}
+                placeholder="Ej: Ayacucho, Ica..."
+                required
+                icon={<Building2 className="w-3.5 h-3.5" />}
+              />
+
+              {/* 2. Provincia */}
+              <SearchableSelect
+                label="Provincia"
+                value={provincia}
+                onChange={handleProvinciaChange}
+                options={provinciasOptions}
+                placeholder={departamento ? 'Selecciona provincia...' : 'Elija dpto primero'}
+                disabled={!departamento || provinciasOptions.length === 0}
+                disabledMessage="Elija dpto primero"
+                required
+              />
+
+              {/* 3. Distrito */}
+              <SearchableSelect
+                label="Distrito"
+                value={distrito}
+                onChange={handleDistritoChange}
+                options={distritosOptions}
+                placeholder={provincia ? 'Selecciona distrito...' : 'Elija prov primero'}
+                disabled={!provincia || distritosOptions.length === 0}
+                disabledMessage="Elija prov primero"
+                required
               />
             </div>
           </div>

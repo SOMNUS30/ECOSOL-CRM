@@ -233,7 +233,7 @@ export const CobranzasModule: React.FC = () => {
 
   // Format Due Date
   const formatDueDate = (dateStr?: string) => {
-    if (!dateStr) return '30 Oct 2026';
+    if (!dateStr) return '-';
     try {
       const parts = dateStr.split('-');
       if (parts.length === 3) {

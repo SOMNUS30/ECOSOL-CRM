@@ -52,7 +52,11 @@ export const NuevaVentaModal: React.FC<NuevaVentaModalProps> = ({
   const [selectedLoteId, setSelectedLoteId] = useState<string>('');
   const [asesor, setAsesor] = useState<string>('Carlos Mendoza Torres');
   const [fechaContrato, setFechaContrato] = useState<string>(() => new Date().toISOString().split('T')[0]);
-  const [mesContrato, setMesContrato] = useState<string>('OCTUBRE 2026');
+  const [mesContrato, setMesContrato] = useState<string>(() => {
+    const d = new Date();
+    const months = ['ENERO', 'FEBRERO', 'MARZO', 'ABRIL', 'MAYO', 'JUNIO', 'JULIO', 'AGOSTO', 'SEPTIEMBRE', 'OCTUBRE', 'NOVIEMBRE', 'DICIEMBRE'];
+    return `${months[d.getMonth()]} ${d.getFullYear()}`;
+  });
   const [formaCompra, setFormaCompra] = useState<FormaCompra>('CREDITO');
 
   const [precioVenta, setPrecioVenta] = useState<string>('12000');

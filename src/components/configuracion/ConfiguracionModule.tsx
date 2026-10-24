@@ -160,7 +160,7 @@ export const ConfiguracionModule: React.FC = () => {
       .replace(/{manzana}/g, 'F')
       .replace(/{lote}/g, '28')
       .replace(/{contrato}/g, 'CTR-0051')
-      .replace(/{fecha}/g, '30 de Octubre de 2026');
+      .replace(/{fecha}/g, new Date().toLocaleDateString('es-PE', { day: '2-digit', month: 'long', year: 'numeric' }));
   }, [formData.mensajeWhatsApp, formData.nombreEmpresa]);
 
   const insertVariable = (variable: string) => {

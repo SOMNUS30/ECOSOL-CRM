@@ -299,7 +299,7 @@ export const DashboardModule: React.FC = () => {
                     chartRange === 'all' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-500 hover:text-slate-800'
                   }`}
                 >
-                  Todo 2026 ({monthlyData.length}m)
+                  Histórico ({monthlyData.length}m)
                 </button>
                 <button
                   onClick={() => setChartRange('6m')}

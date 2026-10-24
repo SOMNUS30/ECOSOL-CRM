@@ -125,11 +125,11 @@ class SupabaseService {
             total_cuotas: Number(d.total_cuotas || 60),
             monto_cuota: Number(d.monto_cuota || 0),
             saldo_financiar: Number(d.saldo_financiar || 0),
-            fecha_primer_pago: d.fecha_primer_pago || '2024-11-30',
+            fecha_primer_pago: d.fecha_primer_pago || '',
             cuotas_pagadas: Number(d.cuotas_pagadas || 0),
             cuotas_pendientes: Number(d.cuotas_pendientes || 0),
             saldo_restante: Number(d.saldo_restante || 0),
-            proximo_vencimiento: d.proximo_vencimiento || '2026-10-30',
+            proximo_vencimiento: d.proximo_vencimiento || (d.fecha_primer_pago ? this.calculateDueDateFromBase(d.fecha_primer_pago, Number(d.cuotas_pagadas || 0)) : ''),
             proximo_numero_cuota: Number(d.proximo_numero_cuota || (Number(d.cuotas_pagadas || 0) + 1)),
             estado_cobranza: (d.estado_cobranza || (d.saldo_restante === 0 ? 'LIQUIDADO' : 'AL DIA')) as EstadoCobranza,
             estado: d.estado || (d.saldo_restante === 0 ? 'LIQUIDADO' : 'ACTIVO')
@@ -1206,6 +1206,24 @@ class SupabaseService {
     }
   }
 
+  calculateDueDateFromBase(primerPagoStr?: string, cuotasPagadas: number = 0): string {
+    if (!primerPagoStr) return '';
+    try {
+      const parts = primerPagoStr.split('T')[0].split('-').map(Number);
+      if (parts.length === 3 && parts[0] && parts[1] && parts[2]) {
+        const y = parts[0];
+        const m = parts[1] - 1 + cuotasPagadas;
+        const anchor = parts[2];
+        const lastDay = new Date(y, m + 1, 0).getDate();
+        const d = new Date(y, m, Math.min(anchor, lastDay));
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      }
+    } catch {
+      // fallback
+    }
+    return primerPagoStr;
+  }
+
   private updateCobranzaPayment(codigoContrato?: string, montoAbonado?: number, fechaAbono?: string) {
     if (!codigoContrato || !montoAbonado) return;
 
@@ -1219,15 +1237,26 @@ class SupabaseService {
         const nuevoSaldo = Math.max(0, Number(c.saldo_restante) - montoAbonado);
         const proximaCuota = nuevasPagadas + 1;
 
-        // Calculate next due date (advance by 1 month from current or payment date)
+        // Calculate next due date (advance by cuotasAbonadas respecting anchor day without calendar overflow)
         let proximoVenc = c.proximo_vencimiento;
         try {
-          const baseDate = new Date(proximoVenc || fechaAbono || new Date());
-          baseDate.setMonth(baseDate.getMonth() + 1);
-          proximoVenc = baseDate.toISOString().split('T')[0];
+          const sourceDate = c.proximo_vencimiento || fechaAbono || c.fecha_primer_pago || '';
+          const parts = sourceDate.split('T')[0].split('-').map(Number);
+          if (parts.length === 3 && parts[0] && parts[1] && parts[2]) {
+            const y = parts[0];
+            const m = parts[1] - 1 + cuotasAbonadas;
+            const anchor = parts[2];
+            const lastDay = new Date(y, m + 1, 0).getDate();
+            const d = new Date(y, m, Math.min(anchor, lastDay));
+            proximoVenc = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+          } else {
+            const d = new Date();
+            d.setDate(d.getDate() + 30 * cuotasAbonadas);
+            proximoVenc = d.toISOString().split('T')[0];
+          }
         } catch {
           const d = new Date();
-          d.setDate(d.getDate() + 30);
+          d.setDate(d.getDate() + 30 * cuotasAbonadas);
           proximoVenc = d.toISOString().split('T')[0];
         }
 

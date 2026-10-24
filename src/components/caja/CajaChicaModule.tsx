@@ -937,10 +937,10 @@ export const CajaChicaModule: React.FC = () => {
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
               <div>
                 <h3 className="text-sm font-bold text-slate-900">
-                  Comparativa Mensual de Ingresos vs Egresos (2026)
+                  Comparativa Mensual de Ingresos vs Egresos {availableMonths.length > 0 ? `(${availableMonths[availableMonths.length - 1].value.slice(0, 4)}${availableMonths[0].value.slice(0, 4) !== availableMonths[availableMonths.length - 1].value.slice(0, 4) ? ` - ${availableMonths[0].value.slice(0, 4)}` : ''})` : ''}
                 </h3>
                 <p className="text-[11px] text-slate-500">
-                  Consolidado de los 10 meses registrados en Supabase (Enero a Octubre 2026)
+                  Consolidado de los {availableMonths.length} meses registrados en Supabase {availableMonths.length > 0 ? `(${availableMonths[availableMonths.length - 1].label} a ${availableMonths[0].label})` : ''}
                 </p>
               </div>
               <div className="flex items-center gap-3 text-xs">

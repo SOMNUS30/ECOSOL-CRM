@@ -207,10 +207,22 @@ export const VentasModule: React.FC = () => {
     fetchContratos();
   }, [fetchContratos]);
 
-  // Normalize month name helper
+  // Normalize month name helper (handles 'OCTUBRE', 'OCTUBRE 2026', '2026-10', etc.)
   const normalizeMonth = (m?: string): string => {
     if (!m) return '';
-    return m.trim().toUpperCase();
+    const upper = m.trim().toUpperCase();
+    for (const item of MESES_CONFIG) {
+      if (upper.includes(item.key)) {
+        return item.key;
+      }
+    }
+    // Handle 'YYYY-MM' format if present
+    if (/^\d{4}-\d{2}/.test(upper)) {
+      const monthNum = parseInt(upper.slice(5, 7), 10);
+      const found = MESES_CONFIG.find(item => item.order === monthNum);
+      if (found) return found.key;
+    }
+    return upper;
   };
 
   // 1. Contratos grouped by month and counts
@@ -413,7 +425,7 @@ export const VentasModule: React.FC = () => {
   const selectedMonthLabel = useMemo(() => {
     if (selectedMes === 'ALL') return 'Todos los Meses (Consolidado)';
     const found = MESES_CONFIG.find(m => m.key === selectedMes);
-    return found ? `${found.label} 2026` : selectedMes;
+    return found ? found.label : selectedMes;
   }, [selectedMes]);
 
   return (
@@ -675,7 +687,7 @@ export const VentasModule: React.FC = () => {
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-4">
                 <div>
                   <h3 className="text-sm font-bold text-slate-900">
-                    Evolución de Ventas por Mes (2026)
+                    Evolución de Ventas por Mes
                   </h3>
                   <p className="text-[11px] text-slate-500">
                     Monto total facturado (S/) y cantidad de lotes vendidos cada mes. Clic en una barra para filtrar.
@@ -722,7 +734,7 @@ export const VentasModule: React.FC = () => {
                       labelFormatter={(label, payload) => {
                         if (payload && payload[0]) {
                           const p = payload[0].payload;
-                          return `${p.mesFull} 2026 (${p.lotesVendidos} lotes vendidos)`;
+                          return `${p.mesFull} (${p.lotesVendidos} lotes vendidos)`;
                         }
                         return label;
                       }}

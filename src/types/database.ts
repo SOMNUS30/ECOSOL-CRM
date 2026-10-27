@@ -50,6 +50,7 @@ export interface Lote {
   numero_lote: string;
   area_m2: number;
   precio_lista: number;
+  referencia?: string;
   estado: EstadoLote;
 }
 

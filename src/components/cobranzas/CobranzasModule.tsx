@@ -955,10 +955,23 @@ export const CobranzasModule: React.FC = () => {
 
                       {/* Cuota Mensual */}
                       <td className="px-4 py-3 text-right whitespace-nowrap">
-                        <span className="font-medium text-slate-900 text-xs block">
-                          S/ {Number(c.monto_cuota).toLocaleString('es-PE', { minimumFractionDigits: 2 })}
-                        </span>
-                        <span className="text-[10px] text-slate-400">Inicial: S/ {c.monto_inicial}</span>
+                        {Number(c.cuotas_pendientes) === 1 && Number(c.saldo_restante) > 0 && Number(c.saldo_restante) !== Number(c.monto_cuota) ? (
+                          <>
+                            <span className="font-bold text-emerald-800 text-xs block">
+                              S/ {Number(c.saldo_restante).toLocaleString('es-PE', { minimumFractionDigits: 2 })}
+                            </span>
+                            <span className="inline-block text-[9px] font-semibold text-emerald-700 bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-200">
+                              Última cuota
+                            </span>
+                          </>
+                        ) : (
+                          <>
+                            <span className="font-medium text-slate-900 text-xs block">
+                              S/ {Number(c.monto_cuota).toLocaleString('es-PE', { minimumFractionDigits: 2 })}
+                            </span>
+                            <span className="text-[10px] text-slate-400">Inicial: S/ {c.monto_inicial}</span>
+                          </>
+                        )}
                       </td>
 
                       {/* Saldo Restante */}

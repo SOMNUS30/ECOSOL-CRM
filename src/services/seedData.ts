@@ -1,5 +1,6 @@
 import { Cliente, Lote, Contrato, Pago, Egreso, ControlCobranza, UsuarioSistema } from '../types/database';
 import rawCobranzas from '../data_cobranzas_dump.json';
+import rawMasterLotes from '../data_master_lotes.json';
 
 // Normalize cobranzas from dump with new database view fields
 export const initialCobranzas: ControlCobranza[] = (rawCobranzas as any[]).map((c, idx) => {
@@ -164,16 +165,17 @@ export function generateRelationalSeed() {
       clientes.push(cliente);
     }
 
-    // Lote
+    // Lote from master inventory
+    const masterMatch = (rawMasterLotes as any[]).find(m => m.id === loteId || (m.etapa === Number(c.etapa) && m.manzana?.toUpperCase() === cleanMz && String(m.numero_lote) === cleanLt));
     const loteEstado = c.estado === 'DESISTIDO' ? 'DESISTIDO' : 'VENDIDO';
-    const area = 120 + ((index * 5) % 80);
     const lote: Lote = {
       id: loteId,
       etapa: Number(c.etapa) || 1,
       manzana: cleanMz,
       numero_lote: cleanLt,
-      area_m2: area,
-      precio_lista: Number(c.precio_venta) || 12000,
+      area_m2: masterMatch ? masterMatch.area_m2 : (Number(c.precio_venta) > 20000 ? 120 : 90),
+      precio_lista: masterMatch ? masterMatch.precio_lista : (Number(c.precio_venta) || 12000),
+      referencia: masterMatch?.referencia || 'ESTANDAR',
       estado: loteEstado
     };
     lotes.push(lote);
@@ -240,24 +242,21 @@ export function generateRelationalSeed() {
     }
   });
 
-  // Also generate DISPONIBLE lots to populate the interactive digital subdivision map (Plano Digital)
-  const allMz = ['A', 'B', 'D', 'E', 'F', "F'", 'G', 'H', 'I', 'J', 'K', 'L', 'L1', "M'", "N'", "O'", "P'", 'Q1', 'R1', "S'", 'S1', 'T', "T'", 'T1', 'U'];
-  let extraLoteId = 500;
-  allMz.forEach((mz) => {
-    for (let ltNum = 1; ltNum <= 10; ltNum++) {
-      const key1 = `1-${mz}-${ltNum}`;
-      if (!seenLoteKey.has(key1)) {
-        seenLoteKey.add(key1);
-        lotes.push({
-          id: ++extraLoteId,
-          etapa: 1,
-          manzana: mz,
-          numero_lote: String(ltNum),
-          area_m2: 120 + ((ltNum * 7) % 60),
-          precio_lista: 9500 + ((ltNum * 400) % 4000),
-          estado: 'DISPONIBLE'
-        });
-      }
+  // Populate all remaining master DISPONIBLE lots (total 806 master inventory)
+  (rawMasterLotes as any[]).forEach(m => {
+    const key = `${m.etapa}-${(m.manzana || '').toUpperCase().trim()}-${m.numero_lote}`;
+    if (!seenLoteKey.has(key)) {
+      seenLoteKey.add(key);
+      lotes.push({
+        id: m.id,
+        etapa: m.etapa,
+        manzana: m.manzana,
+        numero_lote: String(m.numero_lote),
+        area_m2: m.area_m2,
+        precio_lista: m.precio_lista,
+        referencia: m.referencia || 'ESTANDAR',
+        estado: 'DISPONIBLE'
+      });
     }
   });
 

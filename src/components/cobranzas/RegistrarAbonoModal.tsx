@@ -32,10 +32,28 @@ export const RegistrarAbonoModal: React.FC<RegistrarAbonoModalProps> = ({ contra
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
+  // Check if current payment is the last quota
+  const isUltimaCuota = contract ? (
+    Number(contract.cuotas_pendientes) === 1 || 
+    (Number(contract.proximo_numero_cuota) >= Number(contract.total_cuotas)) ||
+    (Number(contract.saldo_restante) > 0 && Number(contract.saldo_restante) <= Number(contract.monto_cuota) * 1.5)
+  ) : false;
+
   // Pre-load default values when contract opens
   useEffect(() => {
     if (contract) {
-      setMonto(String(contract.monto_cuota || ''));
+      const isLast = Number(contract.cuotas_pendientes) === 1 || 
+        (Number(contract.proximo_numero_cuota) >= Number(contract.total_cuotas));
+
+      let defaultMonto = Number(contract.monto_cuota || 0);
+      // If it's the last installment, prefill with exact remaining balance (e.g. S/ 358)
+      if (isLast && Number(contract.saldo_restante) > 0) {
+        defaultMonto = Number(contract.saldo_restante);
+      } else if (Number(contract.saldo_restante) > 0 && Number(contract.saldo_restante) < defaultMonto) {
+        defaultMonto = Number(contract.saldo_restante);
+      }
+
+      setMonto(String(defaultMonto));
       setTipoPago('CUOTA');
       setNumeroOperacion(`OP-${Math.floor(100000 + Math.random() * 900000)}`);
       setErrorMsg(null);
@@ -109,9 +127,16 @@ export const RegistrarAbonoModal: React.FC<RegistrarAbonoModalProps> = ({ contra
               <CreditCard className="w-4 h-4" />
             </div>
             <div>
-              <h2 className="text-sm font-bold text-slate-900">
-                Registrar Pago de Cuota #{contract.proximo_numero_cuota || (contract.cuotas_pagadas + 1)}
-              </h2>
+              <div className="flex items-center gap-2">
+                <h2 className="text-sm font-bold text-slate-900">
+                  Registrar Pago de Cuota #{contract.proximo_numero_cuota || (contract.cuotas_pagadas + 1)}
+                </h2>
+                {isUltimaCuota && (
+                  <span className="text-[10px] font-bold text-emerald-800 bg-emerald-100 border border-emerald-300 px-2 py-0.5 rounded-full">
+                    Última Cuota
+                  </span>
+                )}
+              </div>
               <p className="text-xs text-slate-500">
                 Contrato: <span className="font-mono font-medium text-slate-700">{contract.codigo_contrato}</span>
               </p>
@@ -193,9 +218,16 @@ export const RegistrarAbonoModal: React.FC<RegistrarAbonoModalProps> = ({ contra
 
             {/* Monto */}
             <div>
-              <label className="block text-[11px] font-medium text-slate-700 mb-1">
-                Monto del Abono (S/)
-              </label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-[11px] font-medium text-slate-700">
+                  Monto del Abono (S/)
+                </label>
+                {isUltimaCuota && Number(contract.saldo_restante) > 0 && (
+                  <span className="text-[10px] font-semibold text-emerald-800 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded">
+                    Liquidación exacta: S/ {Number(contract.saldo_restante).toLocaleString('es-PE')}
+                  </span>
+                )}
+              </div>
               <div className="relative">
                 <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-400 font-medium text-xs">
                   S/

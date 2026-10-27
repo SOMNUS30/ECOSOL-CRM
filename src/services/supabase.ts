@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { ControlCobranza, Pago, Egreso, Cliente, Lote, Contrato, UsuarioSistema, EstadoCobranza, FormaCompra, MetodoPago, EmpresaConfig, RolUsuario } from '../types/database';
 import { initialCobranzas, initialUsuarios, generateRelationalSeed } from './seedData';
+import masterLotesFallback from '../data_master_lotes.json';
 
 export const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://agaeaaskhhudknbvncku.supabase.co';
 export const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || 'sb_publishable_Fu3eyGU3dOW5n3Q3WW-5og_zA2kcF8u';
@@ -792,9 +793,17 @@ class SupabaseService {
     }
   }
 
-  // Fetch real lots directly from Supabase table 'lotes'
+  // Fetch real lots directly from Supabase table 'lotes' (synchronized with 806 master inventory)
   async getLotes(): Promise<{ data: Lote[]; error: string | null }> {
     try {
+      // Build master reference and area map
+      const masterMap = new Map<string, any>();
+      (masterLotesFallback as any[]).forEach(m => {
+        masterMap.set(String(m.id), m);
+        const k = `${m.etapa}-${(m.manzana || '').toUpperCase().trim()}-${m.numero_lote}`;
+        masterMap.set(k, m);
+      });
+
       const { data, error } = await supabase
         .from('lotes')
         .select('*')
@@ -805,18 +814,55 @@ class SupabaseService {
         return { data: this.getStoredLotes(), error: error.message };
       }
 
-      const normalized: Lote[] = (data || []).map((l: any) => ({
-        id: l.id,
-        etapa: Number(l.etapa || 1),
-        manzana: l.manzana,
-        numero_lote: String(l.numero_lote),
-        area_m2: Number(l.area_m2 || 0),
-        precio_lista: Number(l.precio_lista || 0),
-        estado: l.estado || 'DISPONIBLE'
-      }));
+      const dbList = data || [];
+      const normalizedMap = new Map<string, Lote>();
 
-      localStorage.setItem(STORAGE_KEYS.LOTES, JSON.stringify(normalized));
-      return { data: normalized, error: null };
+      dbList.forEach((l: any) => {
+        const idKey = String(l.id);
+        const etapa = Number(l.etapa || 1);
+        const mz = (l.manzana || '').toUpperCase().trim();
+        const lt = String(l.numero_lote || '');
+        const naturalKey = `${etapa}-${mz}-${lt}`;
+
+        const masterInfo = masterMap.get(idKey) || masterMap.get(naturalKey);
+
+        const loteObj: Lote = {
+          id: l.id,
+          etapa: etapa,
+          manzana: l.manzana,
+          numero_lote: lt,
+          area_m2: Number(l.area_m2) || masterInfo?.area_m2 || 0,
+          precio_lista: Number(l.precio_lista) || masterInfo?.precio_lista || 0,
+          referencia: l.referencia || masterInfo?.referencia || 'ESTANDAR',
+          estado: l.estado || 'DISPONIBLE'
+        };
+
+        normalizedMap.set(naturalKey, loteObj);
+      });
+
+      // If DB has fewer than the 806 master lots, merge any remaining available lots
+      if (normalizedMap.size < (masterLotesFallback as any[]).length) {
+        (masterLotesFallback as any[]).forEach((m: any) => {
+          const naturalKey = `${m.etapa}-${(m.manzana || '').toUpperCase().trim()}-${m.numero_lote}`;
+          if (!normalizedMap.has(naturalKey)) {
+            normalizedMap.set(naturalKey, {
+              id: m.id,
+              etapa: m.etapa,
+              manzana: m.manzana,
+              numero_lote: String(m.numero_lote),
+              area_m2: m.area_m2,
+              precio_lista: m.precio_lista,
+              referencia: m.referencia || 'ESTANDAR',
+              estado: m.estado || 'DISPONIBLE'
+            });
+          }
+        });
+      }
+
+      const result = Array.from(normalizedMap.values()).sort((a, b) => Number(a.id) - Number(b.id));
+
+      localStorage.setItem(STORAGE_KEYS.LOTES, JSON.stringify(result));
+      return { data: result, error: null };
     } catch (err: any) {
       console.error('Connection error querying lotes:', err);
       return { data: this.getStoredLotes(), error: err?.message || 'Error de conexión con lotes' };

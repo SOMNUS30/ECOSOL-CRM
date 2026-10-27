@@ -49,7 +49,14 @@ export const NuevaVentaModal: React.FC<NuevaVentaModalProps> = ({
   const [clientSearchTerm, setClientSearchTerm] = useState('');
   const [showClientDropdown, setShowClientDropdown] = useState(false);
 
+  // Lot selection states
   const [selectedLoteId, setSelectedLoteId] = useState<string>('');
+  const [isChangingLote, setIsChangingLote] = useState(false);
+  const [loteSearchTerm, setLoteSearchTerm] = useState('');
+  const [loteFilterEtapa, setLoteFilterEtapa] = useState<'ALL' | 1 | 2>('ALL');
+  const [loteFilterMz, setLoteFilterMz] = useState<string>('ALL');
+  const [loteDisplayLimit, setLoteDisplayLimit] = useState<number>(25);
+
   const [asesor, setAsesor] = useState<string>('Carlos Mendoza Torres');
   const [fechaContrato, setFechaContrato] = useState<string>(() => new Date().toISOString().split('T')[0]);
   const [mesContrato, setMesContrato] = useState<string>(() => {
@@ -84,6 +91,46 @@ export const NuevaVentaModal: React.FC<NuevaVentaModalProps> = ({
     return lotes.find(l => String(l.id) === String(selectedLoteId));
   }, [lotes, selectedLoteId]);
 
+  // Unique available manzanas respecting active Etapa filter
+  const availableManzanas = useMemo(() => {
+    const set = new Set<string>();
+    availableLotes.forEach(l => {
+      if (loteFilterEtapa !== 'ALL' && Number(l.etapa) !== Number(loteFilterEtapa)) return;
+      if (l.manzana) set.add(l.manzana.toUpperCase().trim());
+    });
+    return Array.from(set).sort();
+  }, [availableLotes, loteFilterEtapa]);
+
+  // Reset pagination limit when filters or modal change
+  useEffect(() => {
+    setLoteDisplayLimit(25);
+  }, [loteSearchTerm, loteFilterEtapa, loteFilterMz, isOpen]);
+
+  // Filtered available lots for fast search & selection
+  const filteredAvailableLotes = useMemo(() => {
+    return availableLotes.filter(l => {
+      if (loteFilterEtapa !== 'ALL' && Number(l.etapa) !== Number(loteFilterEtapa)) return false;
+      if (loteFilterMz !== 'ALL' && l.manzana.toUpperCase().trim() !== loteFilterMz) return false;
+      if (loteSearchTerm.trim()) {
+        const q = loteSearchTerm.toLowerCase().trim();
+        const mz = (l.manzana || '').toLowerCase();
+        const lt = String(l.numero_lote);
+        const ref = (l.referencia || '').toLowerCase();
+        
+        const fullText = `etapa ${l.etapa} e${l.etapa} mz ${mz} manzana ${mz} lt ${lt} lote ${lt} ${ref} ${mz}${lt} ${mz}-${lt} ${mz} ${lt}`;
+        const tokens = q.split(/\s+/).filter(Boolean);
+        const matchesAll = tokens.every(t => fullText.includes(t));
+        if (!matchesAll) return false;
+      }
+      return true;
+    });
+  }, [availableLotes, loteFilterEtapa, loteFilterMz, loteSearchTerm]);
+
+  // Displayed slice of available lots for instantaneous DOM rendering
+  const displayedLotes = useMemo(() => {
+    return filteredAvailableLotes.slice(0, loteDisplayLimit);
+  }, [filteredAvailableLotes, loteDisplayLimit]);
+
   // Filtered clients for quick search
   const filteredClients = useMemo(() => {
     if (!clientSearchTerm.trim()) return clientes.slice(0, 10);
@@ -111,32 +158,59 @@ export const NuevaVentaModal: React.FC<NuevaVentaModalProps> = ({
 
       if (preselectedLotId) {
         setSelectedLoteId(String(preselectedLotId));
+        setIsChangingLote(false);
         const found = lotes.find(l => String(l.id) === String(preselectedLotId));
         if (found) {
           setPrecioVenta(String(found.precio_lista || 12000));
         }
-      } else if (availableLotes.length > 0 && !selectedLoteId) {
-        setSelectedLoteId(String(availableLotes[0].id));
-        setPrecioVenta(String(availableLotes[0].precio_lista || 12000));
+      } else {
+        setSelectedLoteId('');
+        setIsChangingLote(false);
       }
+      setLoteSearchTerm('');
+      setLoteFilterEtapa('ALL');
+      setLoteFilterMz('ALL');
     }
-  }, [isOpen, preselectedLotId, availableLotes, lotes, user]);
+  }, [isOpen, preselectedLotId, lotes, user]);
 
   // When lot selection changes, update default price
   const handleLoteChange = (loteId: string) => {
     setSelectedLoteId(loteId);
+    setIsChangingLote(false);
     const found = lotes.find(l => String(l.id) === String(loteId));
     if (found) {
       setPrecioVenta(String(found.precio_lista || 12000));
     }
   };
 
-  // Calculations for Credit & Cash
+  const getRefBadgeColor = (ref?: string) => {
+    if (!ref) return 'bg-slate-100 text-slate-600 border-slate-200';
+    const r = ref.toUpperCase();
+    if (r.includes('PARQUE')) return 'bg-emerald-50 text-emerald-700 border-emerald-200';
+    if (r.includes('AVENIDA') || r.includes('CLUB')) return 'bg-sky-50 text-sky-700 border-sky-200';
+    if (r.includes('ESQUINA')) return 'bg-amber-50 text-amber-700 border-amber-200';
+    return 'bg-slate-100 text-slate-600 border-slate-200';
+  };
+
+  // Calculations for Credit & Cash with integer rounding (no cents)
   const isContado = formaCompra === 'CONTADO';
   const parsedPrecio = parseFloat(precioVenta) || 0;
   const parsedInicial = isContado ? parsedPrecio : (parseFloat(montoInicial) || 0);
   const saldoFinanciar = isContado ? 0 : Math.max(0, parsedPrecio - parsedInicial);
-  const montoCuota = isContado || cantidadCuotas === 0 ? 0 : Math.round((saldoFinanciar / cantidadCuotas) * 100) / 100;
+
+  // Redondeo sin céntimos a favor de cuotas exactas enteras
+  const cuotaEstandar = isContado || cantidadCuotas <= 0 
+    ? 0 
+    : Math.floor(saldoFinanciar / cantidadCuotas);
+
+  const cuotaFinal = isContado || cantidadCuotas <= 0
+    ? 0
+    : (cantidadCuotas === 1 
+        ? saldoFinanciar 
+        : saldoFinanciar - (cuotaEstandar * (cantidadCuotas - 1)));
+
+  // For contract record, standard monthly installment is cuotaEstandar
+  const montoCuota = cuotaEstandar;
 
   if (!isOpen) return null;
 
@@ -374,14 +448,14 @@ export const NuevaVentaModal: React.FC<NuevaVentaModalProps> = ({
             </div>
 
             {/* 2. SELECCIÓN DE LOTE DISPONIBLE */}
-            <div className="p-3.5 rounded-lg bg-slate-50 border border-slate-200 space-y-2">
+            <div className="p-3.5 rounded-lg bg-slate-50 border border-slate-200 space-y-2.5">
               <div className="flex items-center justify-between">
                 <label className="font-semibold text-slate-800 text-xs flex items-center gap-1.5">
                   <Building2 className="w-3.5 h-3.5 text-slate-500" />
-                  <span>2. Lote del Proyecto (Únicamente Disponibles)</span>
+                  <span>2. Lote del Proyecto (Inventario Disponible)</span>
                 </label>
-                <span className="text-[11px] text-emerald-700 font-medium">
-                  {availableLotes.length} lotes disponibles
+                <span className="text-[11px] text-emerald-700 font-semibold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                  {availableLotes.length} disponibles
                 </span>
               </div>
 
@@ -389,28 +463,191 @@ export const NuevaVentaModal: React.FC<NuevaVentaModalProps> = ({
                 <div className="p-2.5 rounded-md bg-amber-50 border border-amber-200 text-amber-700 text-xs">
                   No hay lotes con estado 'DISPONIBLE' actualmente en el inventario.
                 </div>
-              ) : (
-                <select
-                  value={selectedLoteId}
-                  onChange={(e) => handleLoteChange(e.target.value)}
-                  className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-slate-800 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500 cursor-pointer font-medium"
-                >
-                  <option value="">Seleccione un lote...</option>
-                  {availableLotes.map((l) => (
-                    <option key={l.id} value={l.id}>
-                      Etapa {l.etapa} • Manzana {l.manzana} - Lote {l.numero_lote} — Precio Lista: S/ {Number(l.precio_lista).toLocaleString()} ({l.area_m2} m²)
-                    </option>
-                  ))}
-                </select>
-              )}
+              ) : selectedLote && !isChangingLote ? (
+                /* Selected Lot Card Pill */
+                <div className="p-3 rounded-lg bg-white border border-emerald-300 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                  <div className="space-y-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="font-bold text-slate-900 text-xs">
+                        Etapa {selectedLote.etapa} • Manzana {selectedLote.manzana} - Lote {selectedLote.numero_lote}
+                      </span>
+                      {selectedLote.referencia && (
+                        <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold border ${getRefBadgeColor(selectedLote.referencia)}`}>
+                          {selectedLote.referencia}
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-[11px] text-slate-500 flex flex-wrap items-center gap-2">
+                      <span>Área: <b className="text-slate-800">{selectedLote.area_m2} m²</b></span>
+                      <span>•</span>
+                      <span>Precio Lista: <b className="text-emerald-700">S/ {Number(selectedLote.precio_lista).toLocaleString('es-PE', { minimumFractionDigits: 2 })}</b></span>
+                    </div>
+                  </div>
 
-              {selectedLote && (
-                <div className="text-[11px] text-slate-500 flex items-center gap-3 pt-1">
-                  <span>Área: <b>{selectedLote.area_m2} m²</b></span>
-                  <span>•</span>
-                  <span>Zonificación: <b>Residencial R-2</b></span>
-                  <span>•</span>
-                  <span>Precio de Lista: <b className="text-emerald-600">S/ {Number(selectedLote.precio_lista).toLocaleString('es-PE', { minimumFractionDigits: 2 })}</b></span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsChangingLote(true);
+                      setLoteSearchTerm('');
+                    }}
+                    className="text-xs text-slate-600 hover:text-emerald-700 font-medium px-2.5 py-1.5 rounded-md bg-slate-50 hover:bg-emerald-50 border border-slate-200 hover:border-emerald-200 transition-colors self-start sm:self-center cursor-pointer shrink-0"
+                  >
+                    Cambiar Lote
+                  </button>
+                </div>
+              ) : (
+                /* Interactive Lot Finder */
+                <div className="space-y-2 bg-white p-3 rounded-lg border border-slate-200 shadow-2xs">
+                  {/* Etapa & Manzana Quick Filters */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {/* Etapa Chips */}
+                    <div className="flex items-center gap-1 p-0.5 bg-slate-100 rounded-lg text-xs">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setLoteFilterEtapa('ALL');
+                          setLoteFilterMz('ALL');
+                        }}
+                        className={`flex-1 py-1 px-2 rounded-md font-medium text-[11px] transition-all cursor-pointer ${
+                          loteFilterEtapa === 'ALL'
+                            ? 'bg-white text-slate-900 shadow-2xs font-bold'
+                            : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                      >
+                        Todas
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setLoteFilterEtapa(1);
+                          setLoteFilterMz('ALL');
+                        }}
+                        className={`flex-1 py-1 px-2 rounded-md font-medium text-[11px] transition-all cursor-pointer ${
+                          loteFilterEtapa === 1
+                            ? 'bg-white text-emerald-700 shadow-2xs font-bold'
+                            : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                      >
+                        Etapa 1
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setLoteFilterEtapa(2);
+                          setLoteFilterMz('ALL');
+                        }}
+                        className={`flex-1 py-1 px-2 rounded-md font-medium text-[11px] transition-all cursor-pointer ${
+                          loteFilterEtapa === 2
+                            ? 'bg-white text-emerald-700 shadow-2xs font-bold'
+                            : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                      >
+                        Etapa 2
+                      </button>
+                    </div>
+
+                    {/* Manzana select */}
+                    <div>
+                      <select
+                        value={loteFilterMz}
+                        onChange={(e) => setLoteFilterMz(e.target.value)}
+                        className="w-full px-2.5 py-1.5 bg-slate-50 hover:bg-white border border-slate-200 rounded-lg text-slate-800 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500 cursor-pointer"
+                      >
+                        <option value="ALL">Todas las Manzanas ({availableManzanas.length})</option>
+                        {availableManzanas.map((mz) => (
+                          <option key={mz} value={mz}>Manzana {mz}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Fast Search input */}
+                  <div className="relative">
+                    <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5" />
+                    <input
+                      type="text"
+                      value={loteSearchTerm}
+                      onChange={(e) => setLoteSearchTerm(e.target.value)}
+                      placeholder="Escribe Manzana, Lote o Ref (ej. A 5, Mz B, parque, esquina)..."
+                      className="w-full pl-8 pr-7 py-2 bg-slate-50 hover:bg-white focus:bg-white border border-slate-200 rounded-lg text-slate-800 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500 transition-colors"
+                      autoFocus={isChangingLote}
+                    />
+                    {loteSearchTerm && (
+                      <button
+                        type="button"
+                        onClick={() => setLoteSearchTerm('')}
+                        className="absolute right-2.5 top-2 text-slate-400 hover:text-slate-600 text-xs"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Results list */}
+                  <div className="border border-slate-200 rounded-lg max-h-52 overflow-y-auto divide-y divide-slate-100 bg-white">
+                    {filteredAvailableLotes.length === 0 ? (
+                      <div className="p-4 text-center text-slate-400 text-xs">
+                        No se encontraron lotes disponibles con los filtros seleccionados.
+                      </div>
+                    ) : (
+                      <>
+                        {displayedLotes.map((l) => (
+                          <div
+                            key={l.id}
+                            onClick={() => handleLoteChange(String(l.id))}
+                            className="p-2.5 hover:bg-emerald-50/60 cursor-pointer transition-colors flex items-center justify-between text-xs group"
+                          >
+                            <div className="space-y-0.5">
+                              <div className="flex items-center gap-1.5">
+                                <span className="font-bold text-slate-900 group-hover:text-emerald-900">
+                                  Etapa {l.etapa} • Mz {l.manzana} - Lt {l.numero_lote}
+                                </span>
+                                {l.referencia && (
+                                  <span className={`px-1.5 py-0.2 rounded text-[9px] font-semibold border ${getRefBadgeColor(l.referencia)}`}>
+                                    {l.referencia}
+                                  </span>
+                                )}
+                              </div>
+                              <span className="text-[11px] text-slate-500">
+                                Área: {l.area_m2} m² • Precio Lista: <b className="text-emerald-700">S/ {Number(l.precio_lista).toLocaleString('es-PE')}</b>
+                              </span>
+                            </div>
+
+                            <span className="text-[11px] font-semibold text-emerald-600 group-hover:text-emerald-700 bg-emerald-50 group-hover:bg-emerald-100 px-2.5 py-1 rounded transition-colors shrink-0">
+                              Seleccionar
+                            </span>
+                          </div>
+                        ))}
+
+                        {filteredAvailableLotes.length > loteDisplayLimit && (
+                          <div className="p-2.5 text-center bg-slate-50 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
+                            <span>
+                              Mostrando <b>{displayedLotes.length}</b> de <b>{filteredAvailableLotes.length}</b> lotes disponibles
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => setLoteDisplayLimit(prev => prev + 30)}
+                              className="font-semibold text-emerald-700 hover:text-emerald-800 hover:underline cursor-pointer"
+                            >
+                              + Ver 30 más
+                            </button>
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
+
+                  {isChangingLote && selectedLote && (
+                    <div className="text-right pt-1">
+                      <button
+                        type="button"
+                        onClick={() => setIsChangingLote(false)}
+                        className="text-xs text-slate-500 hover:text-slate-800 underline cursor-pointer"
+                      >
+                        Cancelar y mantener Mz {selectedLote.manzana} - Lt {selectedLote.numero_lote}
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -543,21 +780,35 @@ export const NuevaVentaModal: React.FC<NuevaVentaModalProps> = ({
                 {!isContado ? (
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2 border-t border-slate-200/80">
                     <div>
-                      <label className="block text-[11px] font-medium text-slate-700 mb-1">
-                        Cantidad de Cuotas
-                      </label>
-                      <select
-                        value={cantidadCuotas}
-                        onChange={(e) => setCantidadCuotas(Number(e.target.value))}
-                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-slate-800 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500 cursor-pointer"
-                      >
-                        <option value={12}>12 meses (1 año)</option>
-                        <option value={24}>24 meses (2 años)</option>
-                        <option value={36}>36 meses (3 años)</option>
-                        <option value={48}>48 meses (4 años)</option>
-                        <option value={60}>60 meses (5 años)</option>
-                        <option value={72}>72 meses (6 años)</option>
-                      </select>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="block text-[11px] font-medium text-slate-700">
+                          Cantidad de Cuotas (meses)
+                        </label>
+                        {cantidadCuotas > 0 && (
+                          <span className="text-[10px] text-slate-400">
+                            ≈ {(cantidadCuotas / 12).toFixed(1).replace('.0', '')} {cantidadCuotas >= 24 ? 'años' : 'año'}
+                          </span>
+                        )}
+                      </div>
+                      <input
+                        type="number"
+                        min="1"
+                        max="240"
+                        step="1"
+                        value={cantidadCuotas === 0 ? '' : cantidadCuotas}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          if (val === '') {
+                            setCantidadCuotas(0);
+                          } else {
+                            const num = parseInt(val, 10);
+                            setCantidadCuotas(isNaN(num) ? 0 : Math.max(0, num));
+                          }
+                        }}
+                        placeholder="Ej. 90"
+                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-slate-900 font-semibold text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                        required
+                      />
                     </div>
 
                     <div>
@@ -571,12 +822,28 @@ export const NuevaVentaModal: React.FC<NuevaVentaModalProps> = ({
 
                     <div>
                       <label className="block text-[11px] font-medium text-slate-700 mb-1">
-                        Cuota Mensual Estimada
+                        Cuota Estándar {cantidadCuotas > 1 && cuotaFinal !== cuotaEstandar ? `(1 a ${cantidadCuotas - 1})` : ''}
                       </label>
-                      <div className="px-3 py-2 bg-emerald-50 border border-emerald-200 rounded-lg font-bold text-emerald-700 text-xs">
-                        S/ {montoCuota.toLocaleString('es-PE', { minimumFractionDigits: 2 })}
+                      <div className="px-3 py-2 bg-emerald-50 border border-emerald-200 rounded-lg font-bold text-emerald-700 text-xs flex items-center justify-between">
+                        <span>S/ {cuotaEstandar.toLocaleString('es-PE')}</span>
+                        {cuotaFinal !== cuotaEstandar && cantidadCuotas > 1 && (
+                          <span className="text-[10px] font-semibold text-emerald-800 bg-emerald-100 px-1.5 py-0.5 rounded">
+                            Última: S/ {cuotaFinal.toLocaleString('es-PE')}
+                          </span>
+                        )}
                       </div>
                     </div>
+
+                    {cuotaFinal !== cuotaEstandar && cantidadCuotas > 1 && (
+                      <div className="sm:col-span-3 text-[11px] text-slate-600 bg-slate-100/70 p-2.5 rounded-lg border border-slate-200 flex flex-wrap items-center justify-between gap-2">
+                        <span>
+                          Plan sin céntimos: <b className="text-slate-900">{cantidadCuotas - 1}</b> cuotas de <b className="text-emerald-700">S/ {cuotaEstandar.toLocaleString('es-PE')}</b>
+                        </span>
+                        <span>
+                          Última cuota final (#{cantidadCuotas}): <b className="text-emerald-800">S/ {cuotaFinal.toLocaleString('es-PE')}</b>
+                        </span>
+                      </div>
+                    )}
 
                     <div className="sm:col-span-3">
                       <label className="block text-[11px] font-medium text-slate-700 mb-1">

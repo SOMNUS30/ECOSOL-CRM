@@ -36,6 +36,8 @@ interface DataContextType {
   registrarEgreso: (egresoData: Omit<Egreso, 'id'>) => Promise<{ success: boolean; error?: string }>;
   registrarCliente: (clienteData: Omit<Cliente, 'id'>) => Promise<Cliente | null>;
   actualizarCliente: (id: number | string, updates: Partial<Cliente>) => Promise<{ success: boolean; error?: string }>;
+  actualizarLote: (id: number | string, updates: Partial<Lote>) => Promise<{ success: boolean; lote?: Lote; error?: string }>;
+  actualizarLotesMasivo: (updatesList: Array<Partial<Lote> & { id: number | string }>) => Promise<{ success: boolean; count: number; error?: string }>;
   registrarVenta: (params: RegistrarVentaParams) => Promise<boolean>;
   getNextContractCode: () => string;
   guardarUsuario: (usuario: UsuarioSistema) => Promise<void> | void;
@@ -258,6 +260,52 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             ...ctr,
             cliente: updatedCli,
             clientes: updatedCli
+          };
+        }
+        return ctr;
+      }));
+    }
+    return res;
+  };
+
+  const actualizarLote = async (id: number | string, updates: Partial<Lote>): Promise<{ success: boolean; lote?: Lote; error?: string }> => {
+    const res = await supabaseService.actualizarLote(id, updates);
+    if (res.success) {
+      setLotes(prev => prev.map(l => String(l.id) === String(id) ? { ...l, ...updates } : l));
+      setContratos(prev => prev.map(ctr => {
+        if (String(ctr.lote_id) === String(id) || String(ctr.lote?.id) === String(id)) {
+          const updatedLote = { ...ctr.lote, ...updates } as Lote;
+          return {
+            ...ctr,
+            lote: updatedLote,
+            lotes: updatedLote
+          };
+        }
+        return ctr;
+      }));
+    }
+    return res;
+  };
+
+  const actualizarLotesMasivo = async (updatesList: Array<Partial<Lote> & { id: number | string }>): Promise<{ success: boolean; count: number; error?: string }> => {
+    const res = await supabaseService.actualizarLotesMasivo(updatesList);
+    if (res.success) {
+      const updateMap = new Map<string, Partial<Lote>>();
+      updatesList.forEach(u => updateMap.set(String(u.id), u));
+
+      setLotes(prev => prev.map(l => {
+        const up = updateMap.get(String(l.id));
+        return up ? { ...l, ...up } : l;
+      }));
+
+      setContratos(prev => prev.map(ctr => {
+        const up = updateMap.get(String(ctr.lote_id)) || (ctr.lote?.id && updateMap.get(String(ctr.lote.id)));
+        if (up) {
+          const updatedLote = { ...ctr.lote, ...up } as Lote;
+          return {
+            ...ctr,
+            lote: updatedLote,
+            lotes: updatedLote
           };
         }
         return ctr;
@@ -518,6 +566,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         registrarEgreso,
         registrarCliente,
         actualizarCliente,
+        actualizarLote,
+        actualizarLotesMasivo,
         registrarVenta,
         getNextContractCode,
         guardarUsuario,

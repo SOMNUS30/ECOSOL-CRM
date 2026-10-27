@@ -1,6 +1,10 @@
 import React, { useState, useMemo } from 'react';
+import * as XLSX from 'xlsx';
 import { useData } from '../../context/DataContext';
 import { Lote, Contrato } from '../../types/database';
+import { toast } from 'sonner';
+import { ImportarLotesModal } from './ImportarLotesModal';
+import { EditarLoteModal } from './EditarLoteModal';
 import { 
   Building2, 
   Search, 
@@ -10,7 +14,11 @@ import {
   FileText,
   Mail,
   MapPin,
-  Compass
+  Compass,
+  UploadCloud,
+  Download,
+  Edit3,
+  FileSpreadsheet
 } from 'lucide-react';
 
 export const PlanoLotesModule: React.FC = () => {
@@ -21,8 +29,11 @@ export const PlanoLotesModule: React.FC = () => {
   const [selectedEstado, setSelectedEstado] = useState<string>('ALL');
   const [searchTerm, setSearchTerm] = useState('');
   
-  // Drawer state for selected lot
+  // Drawer and Modals state
   const [drawerLote, setDrawerLote] = useState<Lote | null>(null);
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [loteToEdit, setLoteToEdit] = useState<Lote | null>(null);
 
   // Group unique manzanas based on active etapa
   const uniqueManzanas = useMemo(() => {
@@ -107,12 +118,18 @@ export const PlanoLotesModule: React.FC = () => {
     );
   };
 
+  // Reactive active drawer lot
+  const activeDrawerLote = useMemo(() => {
+    if (!drawerLote) return null;
+    return lotes.find(l => String(l.id) === String(drawerLote.id)) || drawerLote;
+  }, [lotes, drawerLote]);
+
   const handleLotClick = (lote: Lote) => {
     setDrawerLote(lote);
   };
 
-  const drawerContract = drawerLote ? getContractForLote(drawerLote) : undefined;
-  const drawerCobranza = drawerLote ? getCobranzaForLote(drawerLote) : undefined;
+  const drawerContract = activeDrawerLote ? getContractForLote(activeDrawerLote) : undefined;
+  const drawerCobranza = activeDrawerLote ? getCobranzaForLote(activeDrawerLote) : undefined;
 
   const drawerCliente = useMemo(() => {
     if (!drawerContract && !drawerCobranza) return undefined;
@@ -130,6 +147,62 @@ export const PlanoLotesModule: React.FC = () => {
     return found || cl;
   }, [drawerContract, drawerCobranza, clientes]);
 
+  const handleExportExcel = () => {
+    try {
+      const records = filteredLotes.map(l => {
+        const contract = getContractForLote(l);
+        const cobranza = getCobranzaForLote(l);
+        const cl = contract?.cliente || (contract as any)?.clientes;
+        const titular = cl?.nombres_apellidos || cobranza?.propietario || '';
+        const dni = cl?.dni || cobranza?.dni || '';
+        const contratoCod = contract?.codigo_contrato || cobranza?.codigo_contrato || '';
+
+        return {
+          ETAPA: l.etapa,
+          MZ: l.manzana,
+          LOTE: l.numero_lote,
+          Metraje: l.area_m2,
+          REFERENCIA: l.referencia || 'ESTANDAR',
+          PRECIO: l.precio_lista,
+          ESTADO: l.estado,
+          TITULAR: titular,
+          DNI: dni,
+          CONTRATO: contratoCod
+        };
+      });
+
+      const worksheet = XLSX.utils.json_to_sheet(records);
+      worksheet['!cols'] = [
+        { wch: 8 },  // ETAPA
+        { wch: 8 },  // MZ
+        { wch: 8 },  // LOTE
+        { wch: 12 }, // Metraje
+        { wch: 22 }, // REFERENCIA
+        { wch: 14 }, // PRECIO
+        { wch: 14 }, // ESTADO
+        { wch: 28 }, // TITULAR
+        { wch: 14 }, // DNI
+        { wch: 16 }  // CONTRATO
+      ];
+
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, 'Inventario_Lotes');
+
+      const dateStr = new Date().toISOString().split('T')[0];
+      const etapaSuffix = selectedEtapa === 'ALL' ? 'Completo' : `Etapa_${selectedEtapa}`;
+      const fileName = `Inventario_Lotes_ECOSOL_${etapaSuffix}_${dateStr}.xlsx`;
+
+      XLSX.writeFile(workbook, fileName);
+
+      toast.success('Inventario exportado a Excel', {
+        description: `Se descargaron ${records.length} lotes en el archivo ${fileName}.`
+      });
+    } catch (err: any) {
+      console.error('Error exporting lotes to Excel:', err);
+      toast.error('Error al exportar a Excel', { description: err?.message });
+    }
+  };
+
   const getRefBadgeColor = (ref?: string) => {
     if (!ref) return 'bg-slate-100 text-slate-600 border-slate-200';
     const r = ref.toUpperCase();
@@ -142,7 +215,7 @@ export const PlanoLotesModule: React.FC = () => {
   return (
     <div className="space-y-4 relative">
       {/* Header & Stats Banner */}
-      <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+      <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs flex flex-col xl:flex-row xl:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2.5">
             <h1 className="text-lg font-bold text-slate-900 tracking-tight">
@@ -157,7 +230,7 @@ export const PlanoLotesModule: React.FC = () => {
           </p>
         </div>
 
-        {/* Status Legend & Count Pills */}
+        {/* Status Legend & Action Buttons */}
         <div className="flex flex-wrap items-center gap-2 text-xs">
           <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-700 font-semibold text-xs shadow-2xs">
             <span className="w-2 h-2 rounded-full bg-emerald-500" />
@@ -173,6 +246,27 @@ export const PlanoLotesModule: React.FC = () => {
             <span className="w-2 h-2 rounded-full bg-rose-500" />
             <span>Desistidos: {lotStats.desistidos}</span>
           </div>
+
+          <div className="h-5 w-px bg-slate-200 hidden sm:block mx-1" />
+
+          {/* Excel Buttons */}
+          <button
+            onClick={handleExportExcel}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold text-xs shadow-2xs transition-all cursor-pointer"
+            title="Descargar inventario actual en Excel (.xlsx)"
+          >
+            <Download className="w-3.5 h-3.5 text-slate-500" />
+            <span>Descargar Excel</span>
+          </button>
+
+          <button
+            onClick={() => setIsImportModalOpen(true)}
+            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-xs transition-all cursor-pointer"
+            title="Subir archivo Excel para actualizar precios y datos masivamente"
+          >
+            <UploadCloud className="w-4 h-4" />
+            <span>Actualizar con Excel</span>
+          </button>
         </div>
       </div>
 
@@ -376,7 +470,7 @@ export const PlanoLotesModule: React.FC = () => {
       </div>
 
       {/* Lateral Drawer for Selected Lot */}
-      {drawerLote && (
+      {activeDrawerLote && (
         <div className="fixed inset-0 z-50 overflow-hidden">
           {/* Backdrop */}
           <div 
@@ -396,9 +490,9 @@ export const PlanoLotesModule: React.FC = () => {
                     </div>
                     <div>
                       <h2 className="text-sm font-bold text-slate-900">
-                        Mz {drawerLote.manzana} - Lt {drawerLote.numero_lote}
+                        Mz {activeDrawerLote.manzana} - Lt {activeDrawerLote.numero_lote}
                       </h2>
-                      <span className="text-[11px] text-slate-500">Etapa {drawerLote.etapa} • Proyecto Ecosol</span>
+                      <span className="text-[11px] text-slate-500">Etapa {activeDrawerLote.etapa} • Proyecto Ecosol</span>
                     </div>
                   </div>
 
@@ -416,20 +510,20 @@ export const PlanoLotesModule: React.FC = () => {
                     <span className="text-slate-500 block text-[11px]">Estado</span>
                     <span
                       className={`text-xs font-semibold block mt-0.5 ${
-                        drawerLote.estado === 'DISPONIBLE'
+                        activeDrawerLote.estado === 'DISPONIBLE'
                           ? 'text-emerald-700'
-                          : drawerLote.estado === 'VENDIDO'
+                          : activeDrawerLote.estado === 'VENDIDO'
                             ? 'text-slate-700'
                             : 'text-rose-700'
                       }`}
                     >
-                      {drawerLote.estado}
+                      {activeDrawerLote.estado}
                     </span>
                   </div>
                   <div className="text-right">
                     <span className="text-slate-500 block text-[11px]">Precio de Lista</span>
                     <span className="text-xs font-semibold text-slate-900 block mt-0.5">
-                      S/ {Number(drawerLote.precio_lista).toLocaleString('es-PE', { minimumFractionDigits: 2 })}
+                      S/ {Number(activeDrawerLote.precio_lista).toLocaleString('es-PE', { minimumFractionDigits: 2 })}
                     </span>
                   </div>
                 </div>
@@ -438,17 +532,17 @@ export const PlanoLotesModule: React.FC = () => {
                 <div className="grid grid-cols-2 gap-2 text-xs mb-4">
                   <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-200">
                     <span className="text-slate-500 block text-[11px]">Área</span>
-                    <span className="text-slate-900 font-semibold text-xs">{drawerLote.area_m2} m²</span>
+                    <span className="text-slate-900 font-semibold text-xs">{activeDrawerLote.area_m2} m²</span>
                   </div>
                   <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-200">
                     <span className="text-slate-500 block text-[11px]">Ubicación / Ref.</span>
-                    <span className="text-slate-900 font-semibold text-xs truncate block" title={drawerLote.referencia || 'ESTANDAR'}>
-                      {drawerLote.referencia || 'ESTANDAR'}
+                    <span className="text-slate-900 font-semibold text-xs truncate block" title={activeDrawerLote.referencia || 'ESTANDAR'}>
+                      {activeDrawerLote.referencia || 'ESTANDAR'}
                     </span>
                   </div>
                   <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-200">
                     <span className="text-slate-500 block text-[11px]">Etapa</span>
-                    <span className="text-slate-900 font-semibold text-xs">Etapa {drawerLote.etapa}</span>
+                    <span className="text-slate-900 font-semibold text-xs">Etapa {activeDrawerLote.etapa}</span>
                   </div>
                   <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-200">
                     <span className="text-slate-500 block text-[11px]">Zonificación</span>
@@ -457,7 +551,7 @@ export const PlanoLotesModule: React.FC = () => {
                 </div>
 
                 {/* If Sold or Contracted: Buyer info dossier */}
-                {drawerLote.estado !== 'DISPONIBLE' && (drawerContract || drawerCobranza) ? (
+                {activeDrawerLote.estado !== 'DISPONIBLE' && (drawerContract || drawerCobranza) ? (
                   <div className="p-3.5 rounded-lg bg-slate-50 border border-slate-200 space-y-2.5 text-xs">
                     <div className="flex items-center gap-1.5 pb-2 border-b border-slate-200 text-slate-800 font-semibold text-xs">
                       <User className="w-3.5 h-3.5 text-slate-500" />
@@ -544,7 +638,7 @@ export const PlanoLotesModule: React.FC = () => {
                       </div>
                     )}
                   </div>
-                ) : drawerLote.estado === 'DISPONIBLE' ? (
+                ) : activeDrawerLote.estado === 'DISPONIBLE' ? (
                   <div className="p-3.5 rounded-lg bg-emerald-50 border border-emerald-200 text-xs text-emerald-800 space-y-1">
                     <span className="font-semibold block text-emerald-900">Lote Disponible</span>
                     <p className="text-[11px] text-emerald-700">
@@ -556,6 +650,18 @@ export const PlanoLotesModule: React.FC = () => {
 
               {/* Drawer Actions */}
               <div className="pt-4 border-t border-slate-200 space-y-2">
+                {/* Edit Lot Button */}
+                <button
+                  onClick={() => {
+                    setLoteToEdit(activeDrawerLote);
+                    setIsEditModalOpen(true);
+                  }}
+                  className="w-full py-2 px-3 bg-white hover:bg-slate-50 text-slate-700 font-semibold text-xs rounded-lg transition-colors flex items-center justify-center gap-1.5 cursor-pointer border border-slate-200 shadow-2xs"
+                >
+                  <Edit3 className="w-3.5 h-3.5 text-slate-500" />
+                  <span>Editar Datos del Lote</span>
+                </button>
+
                 {drawerContract && (
                   <button
                     onClick={() => {
@@ -593,6 +699,22 @@ export const PlanoLotesModule: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Import Excel Modal */}
+      <ImportarLotesModal
+        isOpen={isImportModalOpen}
+        onClose={() => setIsImportModalOpen(false)}
+      />
+
+      {/* Edit Single Lot Modal */}
+      <EditarLoteModal
+        lote={loteToEdit}
+        isOpen={isEditModalOpen}
+        onClose={() => {
+          setIsEditModalOpen(false);
+          setLoteToEdit(null);
+        }}
+      />
     </div>
   );
 };

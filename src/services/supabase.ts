@@ -299,6 +299,104 @@ class SupabaseService {
     return { success: true };
   }
 
+  // Update single lot in Supabase table 'lotes' and sync local cache
+  async actualizarLote(id: number | string, updates: Partial<Lote>): Promise<{ success: boolean; lote?: Lote; error?: string }> {
+    try {
+      const updatePayload: any = {};
+      if (updates.area_m2 !== undefined) updatePayload.area_m2 = Number(updates.area_m2);
+      if (updates.precio_lista !== undefined) updatePayload.precio_lista = Number(updates.precio_lista);
+      if (updates.referencia !== undefined) updatePayload.referencia = updates.referencia;
+      if (updates.estado !== undefined) updatePayload.estado = updates.estado;
+      if (updates.etapa !== undefined) updatePayload.etapa = Number(updates.etapa);
+      if (updates.manzana !== undefined) updatePayload.manzana = updates.manzana;
+      if (updates.numero_lote !== undefined) updatePayload.numero_lote = String(updates.numero_lote);
+
+      const { data, error } = await supabase
+        .from('lotes')
+        .update(updatePayload)
+        .eq('id', id)
+        .select();
+
+      if (error) {
+        console.warn('Supabase update lote warning:', error.message);
+        return { success: false, error: error.message };
+      }
+
+      // Persist locally
+      const currentLotes = this.getStoredLotes();
+      const updated = currentLotes.map(l => String(l.id) === String(id) ? { ...l, ...updates } : l);
+      localStorage.setItem(STORAGE_KEYS.LOTES, JSON.stringify(updated));
+
+      const updatedLote = data && data[0] ? (data[0] as Lote) : (updated.find(l => String(l.id) === String(id)));
+      return { success: true, lote: updatedLote };
+    } catch (err: any) {
+      console.warn('Network issue during update lote:', err);
+      return { success: false, error: err?.message || 'Error de conexión' };
+    }
+  }
+
+  // Bulk update lots (e.g. from Excel file) in batches of 50
+  async actualizarLotesMasivo(
+    updatesList: Array<Partial<Lote> & { id: number | string }>
+  ): Promise<{ success: boolean; count: number; error?: string }> {
+    try {
+      if (!updatesList || updatesList.length === 0) {
+        return { success: true, count: 0 };
+      }
+
+      const currentLotes = this.getStoredLotes();
+      const currentMap = new Map<string, Lote>();
+      currentLotes.forEach(l => currentMap.set(String(l.id), l));
+
+      // Prepare records for upsert with all mandatory lot fields
+      const toUpsert = updatesList.map(u => {
+        const existing = currentMap.get(String(u.id));
+        return {
+          id: Number(u.id),
+          etapa: u.etapa !== undefined ? Number(u.etapa) : (existing?.etapa || 1),
+          manzana: u.manzana !== undefined ? u.manzana : (existing?.manzana || ''),
+          numero_lote: u.numero_lote !== undefined ? String(u.numero_lote) : (existing?.numero_lote || ''),
+          area_m2: u.area_m2 !== undefined ? Number(u.area_m2) : (existing?.area_m2 || 0),
+          precio_lista: u.precio_lista !== undefined ? Number(u.precio_lista) : (existing?.precio_lista || 0),
+          referencia: u.referencia !== undefined ? u.referencia : (existing?.referencia || 'ESTANDAR'),
+          estado: u.estado !== undefined ? u.estado : (existing?.estado || 'DISPONIBLE')
+        };
+      });
+
+      const batchSize = 50;
+      let totalSuccess = 0;
+
+      for (let i = 0; i < toUpsert.length; i += batchSize) {
+        const chunk = toUpsert.slice(i, i + batchSize);
+        const { error } = await supabase
+          .from('lotes')
+          .upsert(chunk, { onConflict: 'id' });
+
+        if (error) {
+          console.error(`Error in batch ${i} - ${i + chunk.length}:`, error.message);
+        } else {
+          totalSuccess += chunk.length;
+        }
+      }
+
+      // Update local storage
+      const updateMap = new Map<string, any>();
+      toUpsert.forEach(u => updateMap.set(String(u.id), u));
+
+      const merged = currentLotes.map(l => {
+        const up = updateMap.get(String(l.id));
+        return up ? { ...l, ...up } : l;
+      });
+
+      localStorage.setItem(STORAGE_KEYS.LOTES, JSON.stringify(merged));
+
+      return { success: true, count: totalSuccess };
+    } catch (err: any) {
+      console.error('Error during bulk lot update:', err);
+      return { success: false, count: 0, error: err?.message || 'Error masivo de sincronización' };
+    }
+  }
+
   // Register new sale and contract with relational updates in Supabase and reactive cache
   async registrarVenta(params: RegistrarVentaParams): Promise<{
     success: boolean;

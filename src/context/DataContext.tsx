@@ -136,7 +136,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setContratosError(null);
     }
     setLoadingContratos(false);
-    return res.data || [];
+    return;
   }, [clientes]);
 
   const fetchPagos = useCallback(async (currentContratos?: Contrato[]) => {
@@ -586,11 +586,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         contratos,
         loadingContratos,
         contratosError,
-        refreshContratos: async () => { await fetchContratos(); },
+        refreshContratos: fetchContratos,
         setContratos,
         pagos,
         loadingPagos,
-        refreshPagos: async () => { await fetchPagos(); },
+        refreshPagos: fetchPagos,
         egresos,
         loadingEgresos,
         egresosError,

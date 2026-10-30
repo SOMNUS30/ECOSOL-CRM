@@ -77,7 +77,7 @@ export const VentasModule: React.FC = () => {
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
   const [localError, setLocalError] = useState<string | null>(null);
 
-  const loading = loadingContratos || isRefreshing;
+  const loading = (loadingContratos && globalContratos.length === 0) || isRefreshing;
   const error = contratosError || localError;
 
   // Sincronizar reactivamente los contratos asegurando que el cliente esté 100% resuelto
@@ -148,10 +148,6 @@ export const VentasModule: React.FC = () => {
       setIsRefreshing(false);
     }
   }, [refreshContratos]);
-
-  useEffect(() => {
-    fetchContratos();
-  }, [fetchContratos]);
 
   // Normalize month name helper (handles 'OCTUBRE', 'OCTUBRE 2026', '2026-10', etc.)
   const normalizeMonth = (m?: string): string => {

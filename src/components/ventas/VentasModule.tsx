@@ -63,15 +63,62 @@ const MESES_CONFIG: MesDef[] = [
 
 export const VentasModule: React.FC = () => {
   const { 
+    contratos: globalContratos,
+    clientes,
+    loadingContratos,
+    contratosError,
+    refreshContratos,
     setSelectedContractDetail, 
     setIsNuevoClienteModalOpen,
     setIsNuevaVentaModalOpen,
     setContratos: setGlobalContratos
   } = useData();
 
-  const [contratos, setContratos] = useState<Contrato[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
-  const [error, setError] = useState<string | null>(null);
+  const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
+  const [localError, setLocalError] = useState<string | null>(null);
+
+  const loading = loadingContratos || isRefreshing;
+  const error = contratosError || localError;
+
+  // Sincronizar reactivamente los contratos asegurando que el cliente esté 100% resuelto
+  const contratos = useMemo(() => {
+    const clientMap = new Map<string, any>();
+    (clientes || []).forEach(c => {
+      if (c.id) clientMap.set(String(c.id), c);
+      if (c.dni) clientMap.set(String(c.dni).trim(), c);
+      if (c.nombres_apellidos) clientMap.set(c.nombres_apellidos.trim().toLowerCase(), c);
+    });
+
+    return globalContratos.map(ctr => {
+      const directCliente = ctr.cliente || (ctr as any).clientes;
+      if (directCliente && directCliente.nombres_apellidos) {
+        return {
+          ...ctr,
+          cliente: directCliente,
+          clientes: directCliente
+        };
+      }
+
+      const cId = ctr.cliente_id || directCliente?.id;
+      const cDni = directCliente?.dni;
+      const cName = directCliente?.nombres_apellidos?.trim().toLowerCase();
+
+      const matched = (cId && clientMap.get(String(cId))) ||
+                      (cDni && clientMap.get(String(cDni))) ||
+                      (cName && clientMap.get(cName));
+
+      if (matched) {
+        const merged = { ...matched, ...(directCliente || {}) };
+        return {
+          ...ctr,
+          cliente: merged,
+          clientes: merged
+        };
+      }
+
+      return ctr;
+    });
+  }, [globalContratos, clientes]);
 
   // Main View Switcher: 'reporte' (Monthly Breakdown & Charts) vs 'explorador' (General Table)
   const [moduleView, setModuleView] = useState<ModuleView>('reporte');
@@ -90,118 +137,17 @@ export const VentasModule: React.FC = () => {
   const [reporteTab, setReporteTab] = useState<VentasTab>('TODOS');
   const [reportePage, setReportePage] = useState(1);
 
-  // Consulta directa a Supabase de la tabla 'contratos'
-  const fetchContratos = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-
+    const fetchContratos = useCallback(async () => {
+    setIsRefreshing(true);
+    setLocalError(null);
     try {
-      let { data, error: queryError } = await supabase
-        .from('contratos')
-        .select(`
-          id,
-          codigo_contrato,
-          asesor,
-          mes_contrato,
-          forma_compra,
-          precio_venta,
-          monto_inicial,
-          saldo_financiar,
-          cantidad_cuotas,
-          monto_cuota,
-          cuotas_pagadas_base,
-          fecha_primer_pago,
-          estado,
-          cliente_id,
-          lote_id,
-          clientes!contratos_cliente_id_fkey ( id, dni, nombres_apellidos, telefono, correo, direccion, distrito, provincia, departamento ),
-          lotes!contratos_lote_id_fkey ( id, etapa, manzana, numero_lote, area_m2, precio_lista, estado )
-        `)
-        .order('id', { ascending: true });
-
-      // Desambiguar llaves foráneas si PostgREST devuelve PGRST201
-      if (queryError && queryError.code === 'PGRST201') {
-        const retry = await supabase
-          .from('contratos')
-          .select(`
-            id,
-            codigo_contrato,
-            asesor,
-            mes_contrato,
-            forma_compra,
-            precio_venta,
-            monto_inicial,
-            saldo_financiar,
-            cantidad_cuotas,
-            monto_cuota,
-            cuotas_pagadas_base,
-            fecha_primer_pago,
-            estado,
-            cliente_id,
-            lote_id,
-            clientes!contratos_cliente_id_fkey ( id, dni, nombres_apellidos, telefono, correo, direccion, distrito, provincia, departamento ),
-            lotes!contratos_lote_id_fkey ( id, etapa, manzana, numero_lote, area_m2, precio_lista, estado )
-          `)
-          .order('id', { ascending: true });
-        data = retry.data;
-        queryError = retry.error;
-      }
-
-      if (queryError) {
-        console.error('Error al consultar tabla contratos en Supabase:', queryError);
-        setError(queryError.message);
-        setContratos([]);
-      } else if (data) {
-        const normalized: Contrato[] = data.map((row: any) => {
-          const clienteObj = Array.isArray(row.clientes) ? row.clientes[0] : row.clientes;
-          const loteObj = Array.isArray(row.lotes) ? row.lotes[0] : row.lotes;
-
-          const clienteNormalized = clienteObj ? {
-            id: clienteObj.id || 0,
-            dni: clienteObj.dni || '',
-            nombres_apellidos: clienteObj.nombres_apellidos || '',
-            telefono: clienteObj.telefono || '',
-            correo: clienteObj.correo || '',
-            direccion: clienteObj.direccion || '',
-            distrito: clienteObj.distrito || '',
-            provincia: clienteObj.provincia || '',
-            departamento: clienteObj.departamento || ''
-          } : undefined;
-
-          return {
-            id: row.id,
-            codigo_contrato: row.codigo_contrato,
-            asesor: row.asesor ? String(row.asesor).trim() : 'Sin Asesor',
-            mes_contrato: row.mes_contrato ? String(row.mes_contrato).trim().toUpperCase() : '',
-            forma_compra: row.forma_compra,
-            precio_venta: Number(row.precio_venta || 0),
-            monto_inicial: Number(row.monto_inicial || 0),
-            saldo_financiar: Number(row.saldo_financiar || 0),
-            cantidad_cuotas: Number(row.cantidad_cuotas || 0),
-            monto_cuota: Number(row.monto_cuota || 0),
-            cuotas_pagadas_base: Number(row.cuotas_pagadas_base || 0),
-            fecha_primer_pago: row.fecha_primer_pago || '',
-            estado: row.estado,
-            cliente_id: row.cliente_id || (clienteObj?.id ?? 0),
-            lote_id: row.lote_id || (loteObj?.id ?? 0),
-            cliente: clienteNormalized,
-            clientes: clienteNormalized,
-            lote: loteObj,
-            lotes: loteObj
-          };
-        });
-
-        setContratos(normalized);
-        setGlobalContratos(normalized);
-      }
+      await refreshContratos();
     } catch (err: any) {
-      console.error('Excepción al conectar con Supabase:', err);
-      setError(err?.message || 'Error de conexión con la base de datos de Supabase');
-      setContratos([]);
+      setLocalError(err?.message || 'Error al actualizar contratos');
     } finally {
-      setLoading(false);
+      setIsRefreshing(false);
     }
-  }, [setGlobalContratos]);
+  }, [refreshContratos]);
 
   useEffect(() => {
     fetchContratos();
@@ -1222,7 +1168,8 @@ export const VentasModule: React.FC = () => {
                     paginatedContratos.map((ctr) => {
                       const isContado = ctr.forma_compra === 'CONTADO' || ctr.estado === 'LIQUIDADO';
                       const isDesistido = ctr.estado === 'DESISTIDO';
-                      const clienteObj = ctr.cliente || (ctr as any).clientes;
+                      const directCli = ctr.cliente || (ctr as any).clientes;
+                      const clienteObj = (directCli && directCli.nombres_apellidos) ? directCli : ((clientes || []).find(c => String(c.id) === String(ctr.cliente_id)) || directCli);
                       const loteObj = ctr.lote || (ctr as any).lotes;
 
                       return (

@@ -94,12 +94,50 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setContratosError(res.error);
       setContratos([]);
     } else {
-      setContratos(res.data);
+      const rawContratos = res.data || [];
+      const clientMap = new Map<string, Cliente>();
+      clientes.forEach(c => {
+        if (c.id) clientMap.set(String(c.id), c);
+        if (c.dni) clientMap.set(String(c.dni).trim(), c);
+        if (c.nombres_apellidos) clientMap.set(c.nombres_apellidos.trim().toLowerCase(), c);
+      });
+
+      const loadedContratos = rawContratos.map(ctr => {
+        const cId = ctr.cliente_id || ctr.cliente?.id || (ctr as any).clientes?.id;
+        const cDni = ctr.cliente?.dni || (ctr as any).clientes?.dni;
+        const cName = (ctr.cliente?.nombres_apellidos || (ctr as any).clientes?.nombres_apellidos || '').trim().toLowerCase();
+
+        const matched = (cId && clientMap.get(String(cId))) ||
+                        (cDni && clientMap.get(String(cDni))) ||
+                        (cName && clientMap.get(cName));
+
+        if (matched) {
+          const mergedCliente: Cliente = {
+            ...matched,
+            ...(ctr.cliente || (ctr as any).clientes || {}),
+            correo: (ctr.cliente?.correo || (ctr as any).clientes?.correo || matched.correo || '').trim(),
+            direccion: (ctr.cliente?.direccion || (ctr as any).clientes?.direccion || matched.direccion || '').trim(),
+            distrito: (ctr.cliente?.distrito || (ctr as any).clientes?.distrito || matched.distrito || '').trim(),
+            provincia: (ctr.cliente?.provincia || (ctr as any).clientes?.provincia || matched.provincia || '').trim(),
+            departamento: (ctr.cliente?.departamento || (ctr as any).clientes?.departamento || matched.departamento || '').trim(),
+            telefono: (ctr.cliente?.telefono || (ctr as any).clientes?.telefono || matched.telefono || '').trim(),
+            dni: (ctr.cliente?.dni || (ctr as any).clientes?.dni || matched.dni || '').trim()
+          };
+          return {
+            ...ctr,
+            cliente: mergedCliente,
+            clientes: mergedCliente
+          };
+        }
+        return ctr;
+      });
+
+      setContratos(loadedContratos);
       setContratosError(null);
     }
     setLoadingContratos(false);
     return res.data || [];
-  }, []);
+  }, [clientes]);
 
   const fetchPagos = useCallback(async (currentContratos?: Contrato[]) => {
     setLoadingPagos(true);

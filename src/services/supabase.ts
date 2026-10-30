@@ -225,25 +225,45 @@ class SupabaseService {
   // Register new client in Supabase and sync local store
   async registrarCliente(clienteData: Omit<Cliente, 'id'>): Promise<{ success: boolean; cliente: Cliente; error?: string }> {
     const currentClientes = this.getStoredClientes();
-    const newId = Math.max(...currentClientes.map(c => Number(c.id) || 0), 0) + 1;
+    
+    // Calculate sequential ID to satisfy Supabase NOT NULL constraint
+    let nextId = 1;
+    try {
+      const { data: maxRow } = await supabase
+        .from('clientes')
+        .select('id')
+        .order('id', { ascending: false })
+        .limit(1);
+
+      if (maxRow && maxRow[0]?.id) {
+        nextId = Number(maxRow[0].id) + 1;
+      }
+    } catch {
+      // ignore
+    }
+
+    const localMax = Math.max(...currentClientes.map(c => Number(c.id) || 0), 0);
+    nextId = Math.max(nextId, localMax + 1, 108);
+
     const newCliente: Cliente = {
       ...clienteData,
-      id: newId
+      id: nextId
     };
 
     try {
-      // 1. Try real Supabase insert
+      // 1. Real Supabase insert with explicit sequential ID
       const { data, error } = await supabase
         .from('clientes')
         .insert([{
+          id: nextId,
           dni: clienteData.dni,
           nombres_apellidos: clienteData.nombres_apellidos,
-          telefono: clienteData.telefono,
-          correo: clienteData.correo,
-          direccion: clienteData.direccion,
-          distrito: clienteData.distrito,
-          provincia: clienteData.provincia,
-          departamento: clienteData.departamento
+          telefono: clienteData.telefono || '',
+          correo: clienteData.correo || '',
+          direccion: clienteData.direccion || '',
+          distrito: clienteData.distrito || 'Ica',
+          provincia: clienteData.provincia || 'Ica',
+          departamento: clienteData.departamento || 'Ica'
         }])
         .select();
 
@@ -251,14 +271,14 @@ class SupabaseService {
         newCliente.id = data[0].id;
       }
       if (error) {
-        console.warn('Supabase insert clientes notification/RLS:', error.message);
+        console.error('Supabase insert clientes error:', error.message);
       }
     } catch (err) {
-      console.warn('Network issue during insert cliente:', err);
+      console.error('Network issue during insert cliente:', err);
     }
 
     // 2. Persist locally to synchronized cache
-    const updated = [newCliente, ...currentClientes];
+    const updated = [newCliente, ...currentClientes.filter(c => String(c.id) !== String(newCliente.id))];
     localStorage.setItem(STORAGE_KEYS.CLIENTES, JSON.stringify(updated));
 
     return {

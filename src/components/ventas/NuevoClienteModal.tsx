@@ -104,10 +104,12 @@ export const NuevoClienteModal: React.FC<NuevoClienteModalProps> = ({
     }
 
     // 4. Correo validation
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(correo.trim())) {
-      setErrorMsg('Por favor ingrese un correo electrónico válido.');
-      return;
+    if (correo.trim()) {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(correo.trim())) {
+        setErrorMsg('Por favor ingrese un correo electrónico válido.');
+        return;
+      }
     }
 
     // 5. Dirección validation

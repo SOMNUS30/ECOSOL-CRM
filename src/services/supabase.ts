@@ -198,7 +198,8 @@ class SupabaseService {
   }
 
   getStoredContratos(): Contrato[] {
-    return [];
+    const cached = typeof localStorage !== 'undefined' ? localStorage.getItem(STORAGE_KEYS.CONTRATOS) : null;
+    return cached ? JSON.parse(cached) : [];
   }
 
   // Calculate next sequential contract code
@@ -217,8 +218,8 @@ class SupabaseService {
       }
     });
 
-    const max = numbers.length > 0 ? Math.max(...numbers) : 126;
-    const next = max + 1;
+    const max = numbers.length > 0 ? Math.max(...numbers) : 138;
+    const next = Math.max(max + 1, 139);
     return `CTR-${String(next).padStart(4, '0')}`;
   }
 
@@ -427,7 +428,20 @@ class SupabaseService {
   }> {
     const isContado = params.forma_compra === 'CONTADO';
     const currentContratos = this.getStoredContratos();
-    const contratoId = Math.max(...currentContratos.map(c => Number(c.id) || 0), 0) + 1;
+    let contratoId = Math.max(...currentContratos.map(c => Number(c.id) || 0), 0) + 1;
+    try {
+      const { data: maxRow } = await supabase
+        .from('contratos')
+        .select('id')
+        .order('id', { ascending: false })
+        .limit(1);
+      if (maxRow && maxRow[0]?.id) {
+        contratoId = Math.max(contratoId, Number(maxRow[0].id) + 1);
+      }
+    } catch (e) {
+      console.warn('Error consultando max contrato id:', e);
+    }
+    contratoId = Math.max(contratoId, 139);
 
     const newContrato: Contrato = {
       id: contratoId,
@@ -491,10 +505,11 @@ class SupabaseService {
       estado: newContrato.estado
     };
 
-    // 1. Try real Supabase insertions
+    // 1. Try real Supabase insertions with strict persistence check
     try {
-      // a) Insert contrato
-      await supabase.from('contratos').insert([{
+      // a) Insert contrato with explicit ID (contratos.id lacks auto-increment in Supabase)
+      const { error: contratoError } = await supabase.from('contratos').insert([{
+        id: contratoId,
         codigo_contrato: params.codigo_contrato,
         cliente_id: params.cliente.id,
         lote_id: params.lote.id,
@@ -512,15 +527,29 @@ class SupabaseService {
         estado: newContrato.estado
       }]);
 
-      // b) Update lote status to VENDIDO
-      await supabase
+      if (contratoError) {
+        console.error('Error insertando contrato en Supabase:', contratoError);
+        return {
+          success: false,
+          contrato: newContrato,
+          cobranza: newCobranza,
+          error: `Error al registrar contrato en Supabase: ${contratoError.message}`
+        };
+      }
+
+      // b) Update lote status to VENDIDO in Supabase
+      const { error: loteError } = await supabase
         .from('lotes')
         .update({ estado: 'VENDIDO' })
         .eq('id', params.lote.id);
 
-      // c) If initial payment exists, insert into pagos
+      if (loteError) {
+        console.error('Error actualizando estado del lote en Supabase:', loteError);
+      }
+
+      // c) If initial payment exists, insert into pagos with real sequential ID
       if (newPago) {
-        let nextVentaPagoId = 711;
+        let nextVentaPagoId = 755;
         try {
           const { data: maxRow } = await supabase
             .from('pagos')
@@ -536,7 +565,7 @@ class SupabaseService {
 
         newPago.id = nextVentaPagoId;
 
-        await supabase.from('pagos').insert([{
+        const { error: pagoError } = await supabase.from('pagos').insert([{
           id: nextVentaPagoId,
           contrato_id: contratoId,
           tipo_pago: newPago.tipo_pago,
@@ -545,9 +574,19 @@ class SupabaseService {
           metodo_pago: newPago.metodo_pago,
           fecha_pago: newPago.fecha_pago
         }]);
+
+        if (pagoError) {
+          console.error('Error insertando pago inicial en Supabase:', pagoError);
+        }
       }
-    } catch (err) {
-      console.warn('Network issue or RLS handled gracefully during registrarVenta:', err);
+    } catch (err: any) {
+      console.error('Excepcion durante insercion en Supabase:', err);
+      return {
+        success: false,
+        contrato: newContrato,
+        cobranza: newCobranza,
+        error: err?.message || 'Error de red al registrar la venta'
+      };
     }
 
     // 2. Persist to local synchronized storage

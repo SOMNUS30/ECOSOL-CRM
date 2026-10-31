@@ -355,10 +355,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const registrarVenta = async (params: RegistrarVentaParams): Promise<boolean> => {
     const res = await supabaseService.registrarVenta(params);
     if (res.success) {
-      // 1. Prepend contract
+      // 1. Prepend contract to state immediately
       setContratos(prev => [res.contrato, ...prev]);
 
-      // 2. Update lot status to VENDIDO
+      // 2. Update lot status to VENDIDO in state immediately
       setLotes(prev => prev.map(l => String(l.id) === String(params.lote.id) ? { ...l, estado: 'VENDIDO' as const } : l));
 
       // 3. Prepend payment if initial amount paid
@@ -366,8 +366,19 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setPagos(prev => [res.pago!, ...prev]);
       }
 
-      // 4. Prepend collection record
+      // 4. Prepend collection record to state immediately
       setCobranzas(prev => [res.cobranza, ...prev]);
+
+      // 5. Background re-fetch from Supabase to keep all tables and PostgreSQL views 100% synchronized
+      try {
+        await Promise.all([
+          fetchContratos(),
+          fetchPagos(),
+          supabaseService.getCobranzas().then(cob => setCobranzas(cob))
+        ]);
+      } catch (e) {
+        console.warn('Background sync error after sale:', e);
+      }
 
       return true;
     }

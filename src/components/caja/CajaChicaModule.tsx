@@ -181,6 +181,7 @@ export const CajaChicaModule: React.FC = () => {
   // Ingresos Filters
   const [ingresosSearch, setIngresosSearch] = useState<string>('');
   const [ingresosMethod, setIngresosMethod] = useState<string>('ALL');
+  const [ingresosSort, setIngresosSort] = useState<'recent' | 'date_desc' | 'date_asc' | 'amount_desc'>('recent');
   const [ingresosPage, setIngresosPage] = useState<number>(1);
   const ingresosPageSize = 15;
 
@@ -294,26 +295,39 @@ export const CajaChicaModule: React.FC = () => {
         return false;
       }
 
-      // Search
+      // Comprehensive Search (N° Operación, Titular, DNI, Contrato, Lote, Tipo de Pago)
       if (ingresosSearch.trim()) {
         const q = ingresosSearch.toLowerCase().trim();
         const op = (p.numero_operacion || '').toLowerCase();
         const prop = (p.propietario || '').toLowerCase();
         const ctr = (p.codigo_contrato || '').toLowerCase();
         const tipoP = (p.tipo_pago || '').toLowerCase();
+        const dni = ((p as any).dni || '').toLowerCase();
+        const lote = ((p as any).lote_info || '').toLowerCase();
 
-        if (!op.includes(q) && !prop.includes(q) && !ctr.includes(q) && !tipoP.includes(q)) {
+        if (!op.includes(q) && !prop.includes(q) && !ctr.includes(q) && !tipoP.includes(q) && !dni.includes(q) && !lote.includes(q)) {
           return false;
         }
       }
 
       return true;
     }).sort((a, b) => {
+      if (ingresosSort === 'recent') {
+        // Most recently recorded transactions first (ID descending - shows new sales immediately)
+        return Number(b.id || 0) - Number(a.id || 0);
+      }
+      if (ingresosSort === 'amount_desc') {
+        return Number(b.monto || 0) - Number(a.monto || 0);
+      }
+      if (ingresosSort === 'date_asc') {
+        return (a.fecha_pago || '').localeCompare(b.fecha_pago || '');
+      }
+      // Default date_desc
       const cmp = (b.fecha_pago || '').localeCompare(a.fecha_pago || '');
       if (cmp !== 0) return cmp;
       return Number(b.id || 0) - Number(a.id || 0);
     });
-  }, [pagos, selectedMonth, ingresosMethod, ingresosSearch]);
+  }, [pagos, selectedMonth, ingresosMethod, ingresosSearch, ingresosSort]);
 
   const ingresosTotalPages = Math.ceil(filteredPagos.length / ingresosPageSize) || 1;
   const paginatedPagos = useMemo(() => {
@@ -978,6 +992,97 @@ export const CajaChicaModule: React.FC = () => {
             </div>
           </div>
 
+          {/* Recent Income Transactions in Flujo de Fondos */}
+          <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-xs">
+            <div className="p-4 border-b border-slate-200 bg-slate-50/50 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div>
+                <h3 className="text-xs font-bold text-slate-900 flex items-center gap-2">
+                  <ArrowUpRight className="w-4 h-4 text-emerald-600" />
+                  <span>Últimos Ingresos Registrados en Caja</span>
+                </h3>
+                <p className="text-[11px] text-slate-500">
+                  Entradas de dinero más recientes (iniciales de ventas y cuotas de cobranza)
+                </p>
+              </div>
+              <button
+                onClick={() => setActiveSubTab('ingresos')}
+                className="text-xs font-semibold text-emerald-700 hover:text-emerald-800 flex items-center gap-1 cursor-pointer hover:underline self-start sm:self-auto"
+              >
+                <span>Ver todos los ingresos ({pagos.length})</span>
+                <ChevronRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-slate-50 text-slate-500 uppercase text-[10px] font-semibold border-b border-slate-200">
+                  <tr>
+                    <th className="px-4 py-2.5">Fecha</th>
+                    <th className="px-4 py-2.5">N° Operación</th>
+                    <th className="px-4 py-2.5">Titular / Cliente</th>
+                    <th className="px-4 py-2.5">Contrato</th>
+                    <th className="px-4 py-2.5">Concepto</th>
+                    <th className="px-4 py-2.5 text-right">Monto Ingresado</th>
+                    <th className="px-4 py-2.5 text-center">Voucher</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 text-slate-700">
+                  {pagos.slice(0, 6).map((pago) => (
+                    <tr key={pago.id} className="hover:bg-slate-50/80 transition-colors">
+                      <td className="px-4 py-2.5 font-mono text-slate-600 whitespace-nowrap">
+                        {pago.fecha_pago}
+                      </td>
+                      <td className="px-4 py-2.5 whitespace-nowrap font-mono font-medium text-slate-800">
+                        <span className="bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200 text-[11px]">
+                          {pago.numero_operacion}
+                        </span>
+                      </td>
+                      <td className="px-4 py-2.5">
+                        <span className="font-semibold text-slate-900 block truncate max-w-[200px]">
+                          {pago.propietario || 'Ingreso Directo'}
+                        </span>
+                        {(pago as any).lote_info && (
+                          <span className="text-[10px] text-slate-400 block font-mono">
+                            {(pago as any).lote_info}
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-4 py-2.5 whitespace-nowrap font-mono text-slate-700 font-semibold">
+                        {pago.codigo_contrato || 'S/A'}
+                      </td>
+                      <td className="px-4 py-2.5 whitespace-nowrap">
+                        {pago.tipo_pago === 'INICIAL' ? (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200">
+                            <Sparkles className="w-3 h-3 text-blue-600" />
+                            INICIAL (VENTA)
+                          </span>
+                        ) : pago.tipo_pago === 'AL CONTADO' ? (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                            VENTA AL CONTADO
+                          </span>
+                        ) : (
+                          <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-slate-100 text-slate-700 border border-slate-200">
+                            {pago.tipo_pago || 'CUOTA'}
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-4 py-2.5 text-right font-bold text-emerald-700 whitespace-nowrap">
+                        S/ {Number(pago.monto || 0).toLocaleString('es-PE', { minimumFractionDigits: 2 })}
+                      </td>
+                      <td className="px-4 py-2.5 text-center whitespace-nowrap">
+                        <button
+                          onClick={() => setSelectedVoucher(pago)}
+                          className="px-2 py-1 text-[11px] font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded transition-colors cursor-pointer"
+                        >
+                          Ver
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
           {/* Breakdown Table by Month */}
           <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-xs">
             <div className="p-4 border-b border-slate-200 bg-slate-50/50">
@@ -1189,16 +1294,29 @@ export const CajaChicaModule: React.FC = () => {
               ))}
             </div>
 
-            {/* Search */}
-            <div className="relative w-full sm:w-72">
-              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
-              <input
-                type="text"
-                value={ingresosSearch}
-                onChange={(e) => { setIngresosSearch(e.target.value); setIngresosPage(1); }}
-                placeholder="Buscar por N° Operación, titular o contrato..."
-                className="w-full pl-9 pr-3 py-2 bg-slate-50 hover:bg-white focus:bg-white border border-slate-200 rounded-lg text-slate-800 placeholder-slate-400 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500 transition-colors"
-              />
+            {/* Search & Sort Controls */}
+            <div className="flex items-center gap-2 w-full sm:w-auto">
+              <div className="relative w-full sm:w-64">
+                <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+                <input
+                  type="text"
+                  value={ingresosSearch}
+                  onChange={(e) => { setIngresosSearch(e.target.value); setIngresosPage(1); }}
+                  placeholder="Buscar por DNI, titular, lote o N° op..."
+                  className="w-full pl-9 pr-3 py-2 bg-slate-50 hover:bg-white focus:bg-white border border-slate-200 rounded-lg text-slate-800 placeholder-slate-400 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500 transition-colors"
+                />
+              </div>
+              <select
+                value={ingresosSort}
+                onChange={(e: any) => { setIngresosSort(e.target.value); setIngresosPage(1); }}
+                title="Ordenar transacciones de ingreso"
+                className="px-2.5 py-2 bg-slate-50 hover:bg-white focus:bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-700 focus:outline-none focus:ring-1 focus:ring-emerald-500 cursor-pointer transition-colors shrink-0"
+              >
+                <option value="recent">⚡ Más recientes (por registro)</option>
+                <option value="date_desc">📅 Por fecha (más reciente)</option>
+                <option value="date_asc">📅 Por fecha (más antigua)</option>
+                <option value="amount_desc">💰 Mayor monto</option>
+              </select>
             </div>
           </div>
 
@@ -1322,9 +1440,13 @@ export const CajaChicaModule: React.FC = () => {
                         </td>
 
                         <td className="px-4 py-3">
-                          <span className="font-medium text-slate-800 text-xs block truncate max-w-[200px]">
+                          <span className="font-semibold text-slate-900 text-xs block truncate max-w-[220px]">
                             {pago.propietario || 'Ingreso Directo'}
                           </span>
+                          <div className="flex items-center gap-2 text-[10px] text-slate-400 mt-0.5 flex-wrap">
+                            {(pago as any).dni && <span>DNI: {(pago as any).dni}</span>}
+                            {(pago as any).lote_info && <span className="text-slate-500 font-medium font-mono">{(pago as any).lote_info}</span>}
+                          </div>
                         </td>
 
                         <td className="px-4 py-3 whitespace-nowrap">
@@ -1334,9 +1456,21 @@ export const CajaChicaModule: React.FC = () => {
                         </td>
 
                         <td className="px-4 py-3">
-                          <span className="text-xs text-slate-600">
-                            {pago.tipo_pago || 'CUOTAS MENSUALES'}
-                          </span>
+                          {pago.tipo_pago === 'INICIAL' ? (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-bold bg-blue-50 text-blue-700 border border-blue-200 shadow-2xs">
+                              <Sparkles className="w-3 h-3 text-blue-600" />
+                              INICIAL (VENTA)
+                            </span>
+                          ) : pago.tipo_pago === 'AL CONTADO' ? (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 shadow-2xs">
+                              <Sparkles className="w-3 h-3 text-emerald-600" />
+                              VENTA AL CONTADO
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-slate-100 text-slate-700 border border-slate-200">
+                              {pago.tipo_pago || 'CUOTAS MENSUALES'}
+                            </span>
+                          )}
                         </td>
 
                         <td className="px-4 py-3 whitespace-nowrap">

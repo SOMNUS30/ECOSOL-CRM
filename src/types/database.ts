@@ -87,6 +87,8 @@ export interface Pago {
   fecha_pago: string;
   codigo_contrato?: string;
   propietario?: string;
+  dni?: string;
+  lote_info?: string;
 }
 
 export interface Egreso {

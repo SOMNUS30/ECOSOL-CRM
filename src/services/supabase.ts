@@ -858,7 +858,7 @@ class SupabaseService {
         .from('pagos')
         .select('*')
         .limit(5000)
-        .order('fecha_pago', { ascending: false });
+        .order('id', { ascending: false });
 
       if (error) {
         console.error('Error querying table pagos:', error.message);
@@ -883,13 +883,23 @@ class SupabaseService {
       }
 
       const normalized: Pago[] = (data || []).map((p: any) => {
-        const ctr = p.contrato_id ? contractMap.get(p.contrato_id) : null;
-        const cb = p.contrato_id ? cobranzaMap.get(p.contrato_id) : null;
+        const ctr = p.contrato_id ? (contractMap.get(p.contrato_id) || contractMap.get(Number(p.contrato_id)) || contractMap.get(String(p.contrato_id))) : null;
+        const cb = p.contrato_id ? (cobranzaMap.get(p.contrato_id) || cobranzaMap.get(Number(p.contrato_id)) || cobranzaMap.get(String(p.contrato_id))) : null;
 
         const titular = 
           ctr?.cliente?.nombres_apellidos || 
           (ctr as any)?.clientes?.nombres_apellidos || 
           cb?.propietario;
+
+        const dni = 
+          ctr?.cliente?.dni || 
+          (ctr as any)?.clientes?.dni || 
+          cb?.dni || 
+          '';
+
+        const loteInfo = 
+          ctr?.lote ? `Etapa ${ctr.lote.etapa} Mz ${ctr.lote.manzana} Lt ${ctr.lote.numero_lote}` : 
+          cb ? `Etapa ${cb.etapa} Mz ${cb.manzana} Lt ${cb.numero_lote}` : '';
 
         const codigo = 
           ctr?.codigo_contrato || 
@@ -905,7 +915,9 @@ class SupabaseService {
           metodo_pago: (p.metodo_pago || 'BCP') as MetodoPago,
           fecha_pago: p.fecha_pago || '',
           codigo_contrato: codigo,
-          propietario: titular || (p.contrato_id ? `Contrato #${p.contrato_id}` : 'Ingreso Directo')
+          propietario: titular || (p.contrato_id ? `Contrato #${p.contrato_id}` : 'Ingreso Directo'),
+          dni,
+          lote_info: loteInfo
         };
       });
 

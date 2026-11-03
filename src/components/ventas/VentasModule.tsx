@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { useData } from '../../context/DataContext';
+import { useTheme } from '../../context/ThemeContext';
 import { supabase } from '../../services/supabase';
 import { Contrato } from '../../types/database';
 import { 
@@ -73,6 +74,7 @@ export const VentasModule: React.FC = () => {
     setIsNuevaVentaModalOpen,
     setContratos: setGlobalContratos
   } = useData();
+  const { activeColorTheme } = useTheme();
 
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
   const [localError, setLocalError] = useState<string | null>(null);
@@ -233,12 +235,16 @@ export const VentasModule: React.FC = () => {
     const contado = monthScopedContratos.filter(c => c.forma_compra === 'CONTADO' || c.estado === 'LIQUIDADO').length;
     const desistido = monthScopedContratos.filter(c => c.estado === 'DESISTIDO').length;
 
+    const contadoColor = activeColorTheme.id.includes('azul') || activeColorTheme.id === 'indigo-real'
+      ? '#f59e0b'
+      : '#3b82f6';
+
     return [
-      { name: 'Crédito Directo', value: credito, color: '#10b981' },
-      { name: 'Venta Contado', value: contado, color: '#3b82f6' },
+      { name: 'Crédito Directo', value: credito, color: activeColorTheme.accent },
+      { name: 'Venta Contado', value: contado, color: contadoColor },
       ...(desistido > 0 ? [{ name: 'Desistidos', value: desistido, color: '#94a3b8' }] : [])
     ];
-  }, [monthScopedContratos]);
+  }, [monthScopedContratos, activeColorTheme]);
 
   // 6. Manzanas distribution in selected period
   const manzanaStats = useMemo(() => {
@@ -637,11 +643,11 @@ export const VentasModule: React.FC = () => {
                 </div>
                 <div className="flex items-center gap-3 text-xs">
                   <div className="flex items-center gap-1.5">
-                    <span className="w-3 h-3 rounded-sm bg-emerald-600" />
+                    <span className="w-3 h-3 rounded-sm" style={{ backgroundColor: activeColorTheme.accent }} />
                     <span className="text-slate-600">Volumen S/</span>
                   </div>
                   <div className="flex items-center gap-1.5">
-                    <span className="w-3 h-3 rounded-sm bg-emerald-400" />
+                    <span className="w-3 h-3 rounded-sm" style={{ backgroundColor: activeColorTheme.primary }} />
                     <span className="text-slate-600">Mes Activo</span>
                   </div>
                 </div>
@@ -690,7 +696,7 @@ export const VentasModule: React.FC = () => {
                       {monthlyChartData.map((entry, index) => (
                         <Cell 
                           key={`cell-${index}`} 
-                          fill={entry.mesKey === selectedMes ? '#059669' : '#10b981'}
+                          fill={entry.mesKey === selectedMes ? activeColorTheme.primary : activeColorTheme.accent}
                           opacity={selectedMes === 'ALL' || entry.mesKey === selectedMes ? 1 : 0.45}
                         />
                       ))}

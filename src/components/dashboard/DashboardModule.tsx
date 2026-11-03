@@ -312,7 +312,7 @@ export const DashboardModule: React.FC = () => {
               </div>
 
               <div className="flex items-center gap-1.5">
-                <span className="w-2.5 h-2.5 rounded bg-emerald-500"></span>
+                <span className="w-2.5 h-2.5 rounded" style={{ backgroundColor: activeColorTheme.accent }}></span>
                 <span className="text-slate-600">Ingresos</span>
               </div>
               <div className="flex items-center gap-1.5">

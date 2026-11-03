@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useData } from '../../context/DataContext';
 import { useAuth } from '../../context/AuthContext';
 import { Cliente, Lote, FormaCompra, MetodoPago } from '../../types/database';
@@ -48,6 +48,20 @@ export const NuevaVentaModal: React.FC<NuevaVentaModalProps> = ({
   const [selectedCliente, setSelectedCliente] = useState<Cliente | null>(null);
   const [clientSearchTerm, setClientSearchTerm] = useState('');
   const [showClientDropdown, setShowClientDropdown] = useState(false);
+  const clientSearchRef = useRef<HTMLDivElement>(null);
+
+  // Close client dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (clientSearchRef.current && !clientSearchRef.current.contains(event.target as Node)) {
+        setShowClientDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
 
   // Lot selection states
   const [selectedLoteId, setSelectedLoteId] = useState<string>('');
@@ -131,14 +145,14 @@ export const NuevaVentaModal: React.FC<NuevaVentaModalProps> = ({
     return filteredAvailableLotes.slice(0, loteDisplayLimit);
   }, [filteredAvailableLotes, loteDisplayLimit]);
 
-  // Filtered clients for quick search
+  // Filtered clients: only search when user types (empty query shows no list)
   const filteredClients = useMemo(() => {
-    if (!clientSearchTerm.trim()) return clientes.slice(0, 10);
-    const q = clientSearchTerm.toLowerCase();
+    const q = clientSearchTerm.trim().toLowerCase();
+    if (!q) return [];
     return clientes.filter(c => 
       c.nombres_apellidos.toLowerCase().includes(q) || 
       c.dni.includes(q)
-    ).slice(0, 10);
+    ).slice(0, 15);
   }, [clientes, clientSearchTerm]);
 
   // Auto-generate next contract code
@@ -150,6 +164,8 @@ export const NuevaVentaModal: React.FC<NuevaVentaModalProps> = ({
   useEffect(() => {
     if (isOpen) {
       setErrorMsg(null);
+      setShowClientDropdown(false);
+      setClientSearchTerm('');
       setNumeroOperacion(`OP-${Math.floor(100000 + Math.random() * 900000)}`);
       
       if (user?.nombres) {
@@ -385,34 +401,51 @@ export const NuevaVentaModal: React.FC<NuevaVentaModalProps> = ({
                 </div>
               ) : (
                 /* Client Search Bar with Dropdown */
-                <div className="relative">
+                <div ref={clientSearchRef} className="relative">
                   <div className="relative">
                     <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5" />
                     <input
                       type="text"
                       value={clientSearchTerm}
-                      onFocus={() => setShowClientDropdown(true)}
+                      onFocus={() => {
+                        if (clientSearchTerm.trim().length > 0) {
+                          setShowClientDropdown(true);
+                        }
+                      }}
                       onChange={(e) => {
                         setClientSearchTerm(e.target.value);
-                        setShowClientDropdown(true);
+                        setShowClientDropdown(e.target.value.trim().length > 0);
                       }}
-                      placeholder="Buscar por DNI o Nombres del cliente..."
-                      className="w-full pl-8 pr-3 py-2 bg-white border border-slate-200 rounded-lg text-slate-800 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                      placeholder="Escribe el DNI o nombres del cliente para buscar..."
+                      className="w-full pl-8 pr-8 py-2 bg-white border border-slate-200 rounded-lg text-slate-800 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500"
                     />
+                    {clientSearchTerm && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setClientSearchTerm('');
+                          setShowClientDropdown(false);
+                        }}
+                        className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600 cursor-pointer"
+                        title="Limpiar búsqueda"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    )}
                   </div>
 
-                  {showClientDropdown && (
-                    <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-lg shadow-lg z-20 max-h-48 overflow-y-auto divide-y divide-slate-100">
+                  {showClientDropdown && clientSearchTerm.trim().length > 0 && (
+                    <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-lg shadow-lg z-20 max-h-52 overflow-y-auto divide-y divide-slate-100">
                       {filteredClients.length === 0 ? (
                         <div className="p-3 text-center text-slate-400 text-xs">
-                          <p>No se encontraron clientes coincidentes.</p>
+                          <p>No se encontraron clientes con "{clientSearchTerm}".</p>
                           <button
                             type="button"
                             onClick={() => {
                               setShowClientDropdown(false);
                               setIsSubModalClienteOpen(true);
                             }}
-                            className="mt-1 text-emerald-600 font-semibold hover:underline"
+                            className="mt-1 text-emerald-600 font-semibold hover:underline cursor-pointer"
                           >
                             + Registrar nuevo cliente ahora
                           </button>
@@ -424,18 +457,19 @@ export const NuevaVentaModal: React.FC<NuevaVentaModalProps> = ({
                             onClick={() => {
                               setSelectedCliente(c);
                               setShowClientDropdown(false);
+                              setClientSearchTerm('');
                             }}
-                            className="p-2.5 hover:bg-slate-50 cursor-pointer transition-colors flex items-center justify-between"
+                            className="p-2.5 hover:bg-emerald-50/60 cursor-pointer transition-colors flex items-center justify-between"
                           >
                             <div>
-                              <span className="font-medium text-slate-800 block">
+                              <span className="font-semibold text-slate-800 block">
                                 {c.nombres_apellidos}
                               </span>
-                              <span className="text-[11px] text-slate-400">
-                                DNI: {c.dni} • Cel: {c.telefono}
+                              <span className="text-[11px] text-slate-500">
+                                DNI: <b>{c.dni}</b> • Cel: {c.telefono} • {c.distrito || 'Ica'}
                               </span>
                             </div>
-                            <span className="text-[11px] text-emerald-600 font-medium">
+                            <span className="text-[11px] text-emerald-700 font-medium px-2 py-0.5 rounded bg-emerald-50 border border-emerald-200">
                               Seleccionar
                             </span>
                           </div>
@@ -947,7 +981,8 @@ export const NuevaVentaModal: React.FC<NuevaVentaModalProps> = ({
         onClose={() => setIsSubModalClienteOpen(false)}
         onClientCreated={(newClient) => {
           setSelectedCliente(newClient);
-          setClientSearchTerm(newClient.nombres_apellidos);
+          setClientSearchTerm('');
+          setShowClientDropdown(false);
         }}
       />
     </>

@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { useData } from '../../context/DataContext';
+import { useTheme } from '../../context/ThemeContext';
 import { TipoEgreso, MetodoPago, Pago } from '../../types/database';
 import { VoucherModal } from '../common/VoucherModal';
 import { toast } from 'sonner';
@@ -164,6 +165,7 @@ export const CajaChicaModule: React.FC = () => {
     refreshPagos,
     eliminarPago
   } = useData();
+  const { activeColorTheme } = useTheme();
 
   // Active Sub-Tab
   const [activeSubTab, setActiveSubTab] = useState<CajaSubTab>('ingresos');
@@ -959,7 +961,7 @@ export const CajaChicaModule: React.FC = () => {
               </div>
               <div className="flex items-center gap-3 text-xs">
                 <div className="flex items-center gap-1.5">
-                  <span className="w-3 h-3 rounded-sm bg-emerald-600" />
+                  <span className="w-3 h-3 rounded-sm" style={{ backgroundColor: activeColorTheme.accent }} />
                   <span className="text-slate-600">Ingresos</span>
                 </div>
                 <div className="flex items-center gap-1.5">
@@ -985,7 +987,7 @@ export const CajaChicaModule: React.FC = () => {
                     labelFormatter={(label, p) => p?.[0]?.payload?.mesFull || label}
                     contentStyle={{ backgroundColor: '#ffffff', borderColor: '#e2e8f0', borderRadius: '8px', fontSize: '11px', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)' }}
                   />
-                  <Bar dataKey="ingresos" fill="#10b981" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="ingresos" fill={activeColorTheme.accent} radius={[4, 4, 0, 0]} />
                   <Bar dataKey="egresos" fill="#f43f5e" radius={[4, 4, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>

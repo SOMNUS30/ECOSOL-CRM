@@ -1861,11 +1861,11 @@
     "total_cuotas": 72,
     "monto_cuota": 281,
     "saldo_financiar": 20250,
-    "fecha_primer_pago": "2025-05-30",
+    "fecha_primer_pago": "2025-04-30",
     "cuotas_pagadas": 11,
     "cuotas_pendientes": 61,
     "saldo_restante": 17159,
-    "proximo_vencimiento": "2026-04-30",
+    "proximo_vencimiento": "2026-03-30",
     "proximo_numero_cuota": 12,
     "estado_cobranza": "EN MORA"
   },

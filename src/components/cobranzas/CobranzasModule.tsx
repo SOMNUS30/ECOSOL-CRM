@@ -406,16 +406,15 @@ export const CobranzasModule: React.FC = () => {
     const est = c.estado_cobranza || 'AL DIA';
     const cuotasVencidas = c.mora?.cuotasVencidas || 0;
 
-    // OVERDUE: Cuota vencida o en mora
+    // OVERDUE: Cuota vencida
     if (est === 'EN MORA' || cuotasVencidas > 0) {
-      const labelText = cuotasVencidas > 1 ? ('Vencido (' + cuotasVencidas + ' cuotas)') : 'Vencido';
       return (
         <span 
           title={c.mora?.vencidaDesde ? ('Vencido desde ' + c.mora.vencidaDesde + ' - ' + c.mora.diasAtraso + ' días de atraso') : 'Cuota vencida'}
-          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold bg-rose-50 text-rose-700 border border-rose-200"
+          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-medium bg-rose-50 text-rose-700 border border-rose-200"
         >
           <AlertTriangle className="w-3 h-3 text-rose-600" />
-          {labelText}
+          Vencido
         </span>
       );
     }

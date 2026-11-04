@@ -1238,6 +1238,41 @@ class SupabaseService {
     }
   }
 
+  // Delete operating expense directly from Supabase table 'egresos'
+  async eliminarEgreso(egresoId: number | string): Promise<{ success: boolean; error?: string }> {
+    try {
+      const { error } = await supabase
+        .from('egresos')
+        .delete()
+        .eq('id', egresoId);
+
+      if (error) {
+        console.error('Supabase error deleting from egresos:', error);
+        return { success: false, error: error.message };
+      }
+
+      // Also clean from localStorage cache if present
+      try {
+        const cached = localStorage.getItem(STORAGE_KEYS.EGRESOS);
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed)) {
+            const updated = parsed.filter((e: any) => String(e.id) !== String(egresoId));
+            localStorage.setItem(STORAGE_KEYS.EGRESOS, JSON.stringify(updated));
+          }
+        }
+      } catch {}
+
+      return { success: true };
+    } catch (err: any) {
+      console.error('Error deleting egreso:', err);
+      return {
+        success: false,
+        error: err?.message || 'Error al comunicarse con Supabase'
+      };
+    }
+  }
+
   // Company Configuration - Cloud Supabase with Local Synchronized Cache
   async getEmpresaConfig(): Promise<EmpresaConfig | null> {
     try {

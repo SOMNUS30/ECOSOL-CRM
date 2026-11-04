@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { useData } from '../../context/DataContext';
 import { useTheme } from '../../context/ThemeContext';
-import { TipoEgreso, MetodoPago, Pago } from '../../types/database';
+import { TipoEgreso, MetodoPago, Pago, Egreso } from '../../types/database';
 import { VoucherModal } from '../common/VoucherModal';
 import { toast } from 'sonner';
 import { 
@@ -160,6 +160,7 @@ export const CajaChicaModule: React.FC = () => {
     egresosError, 
     refreshEgresos, 
     registrarEgreso,
+    eliminarEgreso,
     pagos,
     loadingPagos,
     refreshPagos,
@@ -176,6 +177,10 @@ export const CajaChicaModule: React.FC = () => {
   // Deletion modal state for Pagos (Ingresos)
   const [pagoToDelete, setPagoToDelete] = useState<Pago | null>(null);
   const [isDeletingPago, setIsDeletingPago] = useState<boolean>(false);
+
+  // Deletion modal state for Egresos (Gastos Operativos)
+  const [egresoToDelete, setEgresoToDelete] = useState<Egreso | null>(null);
+  const [isDeletingEgreso, setIsDeletingEgreso] = useState<boolean>(false);
 
   // Month selector for Flujo & Ingresos & Egresos
   const [selectedMonth, setSelectedMonth] = useState<string>('ALL');
@@ -633,6 +638,31 @@ export const CajaChicaModule: React.FC = () => {
       });
     } finally {
       setIsDeletingPago(false);
+    }
+  };
+
+  // Handler for confirming egreso deletion
+  const handleConfirmDeleteEgreso = async () => {
+    if (!egresoToDelete) return;
+    setIsDeletingEgreso(true);
+    try {
+      const res = await eliminarEgreso(egresoToDelete.id);
+      if (res.success) {
+        toast.success('Egreso eliminado exitosamente', {
+          description: `Se eliminó el gasto "${egresoToDelete.descripcion}" por S/ ${Number(egresoToDelete.monto).toLocaleString('es-PE', { minimumFractionDigits: 2 })}.`
+        });
+        setEgresoToDelete(null);
+      } else {
+        toast.error('Error al eliminar egreso', {
+          description: res.error || 'No se pudo eliminar el egreso de Supabase.'
+        });
+      }
+    } catch (err: any) {
+      toast.error('Error', {
+        description: err?.message || 'Error inesperado al eliminar el egreso.'
+      });
+    } finally {
+      setIsDeletingEgreso(false);
     }
   };
 
@@ -1851,12 +1881,13 @@ export const CajaChicaModule: React.FC = () => {
                     <th className="px-4 py-3">Categoría</th>
                     <th className="px-4 py-3">Descripción / Concepto</th>
                     <th className="px-4 py-3 text-right">Monto</th>
+                    <th className="px-4 py-3 text-center">Acción</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-slate-700">
                   {loadingEgresos ? (
                     <tr>
-                      <td colSpan={5} className="px-4 py-12 text-center">
+                      <td colSpan={6} className="px-4 py-12 text-center">
                         <div className="flex flex-col items-center justify-center gap-2">
                           <div className="w-6 h-6 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin" />
                           <span className="text-xs text-slate-500">Cargando egresos desde Supabase...</span>
@@ -1865,7 +1896,7 @@ export const CajaChicaModule: React.FC = () => {
                     </tr>
                   ) : filteredEgresos.length === 0 ? (
                     <tr>
-                      <td colSpan={5} className="px-4 py-12 text-center">
+                      <td colSpan={6} className="px-4 py-12 text-center">
                         <Wallet className="w-8 h-8 text-slate-300 mx-auto mb-2" />
                         <p className="text-xs font-semibold text-slate-700">
                           No se encontraron egresos registrados
@@ -1901,6 +1932,17 @@ export const CajaChicaModule: React.FC = () => {
                         <td className="px-4 py-3 text-right whitespace-nowrap font-bold text-rose-700 text-xs">
                           S/ {Number(egr.monto).toLocaleString('es-PE', { minimumFractionDigits: 2 })}
                         </td>
+                        <td className="px-4 py-3 text-center whitespace-nowrap">
+                          <button
+                            type="button"
+                            onClick={() => setEgresoToDelete(egr)}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium text-rose-700 hover:text-rose-800 bg-rose-50 hover:bg-rose-100 border border-rose-200 transition-colors cursor-pointer shadow-xs"
+                            title="Eliminar este gasto operativo"
+                          >
+                            <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                            <span>Eliminar</span>
+                          </button>
+                        </td>
                       </tr>
                     ))
                   )}
@@ -1918,6 +1960,7 @@ export const CajaChicaModule: React.FC = () => {
                       <td className="px-4 py-3 text-right whitespace-nowrap font-black text-rose-700 text-sm">
                         S/ {filteredEgresosTotal.toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </td>
+                      <td className="px-4 py-3"></td>
                     </tr>
                   </tfoot>
                 )}
@@ -2247,6 +2290,97 @@ export const CajaChicaModule: React.FC = () => {
           pago={selectedVoucher}
           onClose={() => setSelectedVoucher(null)}
         />
+      )}
+
+      {/* Delete Egreso Confirmation Modal */}
+      {egresoToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs">
+          <div className="relative w-full max-w-md bg-white border border-slate-200 rounded-xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            {/* Header */}
+            <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-rose-50/50">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-lg bg-rose-100 border border-rose-200 flex items-center justify-center text-rose-600">
+                  <Trash2 className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900">
+                    Eliminar Egreso Operativo
+                  </h3>
+                  <p className="text-[11px] text-slate-500">
+                    Confirmación de eliminación de gasto
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => !isDeletingEgreso && setEgresoToDelete(null)}
+                disabled={isDeletingEgreso}
+                className="p-1 text-slate-400 hover:text-slate-600 rounded-md hover:bg-slate-100 transition-colors cursor-pointer disabled:opacity-50"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="p-5 space-y-4 text-xs">
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg space-y-2">
+                <div className="flex justify-between items-center text-slate-600">
+                  <span>Fecha:</span>
+                  <span className="font-medium text-slate-900">{egresoToDelete.fecha}</span>
+                </div>
+                <div className="flex justify-between items-center text-slate-600">
+                  <span>Tipo:</span>
+                  <span className="font-semibold text-slate-800">{egresoToDelete.tipo}</span>
+                </div>
+                <div className="flex justify-between items-center text-slate-600">
+                  <span>Categoría:</span>
+                  <span className="font-semibold text-slate-800">{egresoToDelete.categoria}</span>
+                </div>
+                <div className="flex justify-between items-start text-slate-600 gap-2">
+                  <span>Concepto:</span>
+                  <span className="font-medium text-slate-900 text-right">{egresoToDelete.descripcion}</span>
+                </div>
+                <div className="flex justify-between items-center text-slate-600 pt-1 border-t border-slate-200">
+                  <span>Monto:</span>
+                  <span className="font-bold text-rose-700 text-sm">
+                    S/ {Number(egresoToDelete.monto).toLocaleString('es-PE', { minimumFractionDigits: 2 })}
+                  </span>
+                </div>
+              </div>
+
+              <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-amber-900 text-[11px] leading-relaxed space-y-1">
+                <div className="font-semibold flex items-center gap-1.5 text-amber-800">
+                  <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                  <span>Impacto en la caja del sistema:</span>
+                </div>
+                <ul className="list-disc list-inside space-y-0.5 text-amber-800/90 pl-1">
+                  <li>Se eliminará permanentemente de la tabla <b>egresos</b> en Supabase.</li>
+                  <li>El balance de caja se actualizará automáticamente sumando S/ {Number(egresoToDelete.monto).toLocaleString('es-PE', { minimumFractionDigits: 2 })} al disponible.</li>
+                </ul>
+              </div>
+
+              {/* Actions */}
+              <div className="pt-2 flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setEgresoToDelete(null)}
+                  disabled={isDeletingEgreso}
+                  className="px-3.5 py-2 bg-white hover:bg-slate-100 text-slate-700 rounded-lg border border-slate-200 text-xs font-medium cursor-pointer transition-colors disabled:opacity-50"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmDeleteEgreso}
+                  disabled={isDeletingEgreso}
+                  className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white font-medium rounded-lg text-xs flex items-center gap-1.5 shadow-xs cursor-pointer transition-colors disabled:opacity-50"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>{isDeletingEgreso ? 'Eliminando...' : 'Sí, Eliminar Egreso'}</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Delete / Anular Pago Confirmation Modal */}

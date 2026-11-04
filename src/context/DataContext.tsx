@@ -34,6 +34,7 @@ interface DataContextType {
   registrarAbono: (pagoData: Omit<Pago, 'id'> & { codigo_contrato?: string; propietario?: string }) => Promise<boolean>;
   eliminarPago: (pagoId: number | string) => Promise<{ success: boolean; error?: string }>;
   registrarEgreso: (egresoData: Omit<Egreso, 'id'>) => Promise<{ success: boolean; error?: string }>;
+  eliminarEgreso: (egresoId: number | string) => Promise<{ success: boolean; error?: string }>;
   registrarCliente: (clienteData: Omit<Cliente, 'id'>) => Promise<Cliente | null>;
   actualizarCliente: (id: number | string, updates: Partial<Cliente>) => Promise<{ success: boolean; error?: string }>;
   actualizarLote: (id: number | string, updates: Partial<Lote>) => Promise<{ success: boolean; lote?: Lote; error?: string }>;
@@ -548,6 +549,22 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return { success: false, error: res.error || 'No se pudo guardar el gasto en Supabase.' };
   };
 
+  const eliminarEgreso = async (egresoId: number | string): Promise<{ success: boolean; error?: string }> => {
+    const res = await supabaseService.eliminarEgreso(egresoId);
+    if (res.success) {
+      // 1. Instantly update local state
+      setEgresos(prev => prev.filter(e => String(e.id) !== String(egresoId)));
+      // 2. Background re-fetch to ensure complete sync with database
+      try {
+        await fetchEgresos();
+      } catch (err) {
+        console.warn('Error refetching egresos after deletion:', err);
+      }
+      return { success: true };
+    }
+    return { success: false, error: res.error || 'No se pudo eliminar el egreso de Supabase.' };
+  };
+
   const guardarUsuario = async (user: UsuarioSistema) => {
     const updated = await supabaseService.saveUsuario(user);
     setUsuarios(updated);
@@ -613,6 +630,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         registrarAbono,
         eliminarPago,
         registrarEgreso,
+        eliminarEgreso,
         registrarCliente,
         actualizarCliente,
         actualizarLote,

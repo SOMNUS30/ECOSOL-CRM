@@ -1,4 +1,4 @@
-import { Cliente, Lote, Contrato, Pago, Egreso, ControlCobranza, UsuarioSistema } from '../types/database';
+import { Cliente, Lote, Contrato, Pago, Egreso, ControlCobranza, UsuarioSistema, EstadoCobranza } from '../types/database';
 import rawCobranzas from '../data_cobranzas_dump.json';
 import rawMasterLotes from '../data_master_lotes.json';
 
@@ -20,23 +20,21 @@ export const initialCobranzas: ControlCobranza[] = (rawCobranzas as any[]).map((
     proximoVenc = d.toISOString().split('T')[0];
   }
 
-  // Derive estado_cobranza
-  let estadoCobranza = c.estado_cobranza;
-  if (!estadoCobranza) {
-    if (saldoRestante === 0 || cuotasPendientes === 0) {
-      estadoCobranza = 'LIQUIDADO';
-    } else if (c.estado === 'DESISTIDO') {
+  // Derive estado_cobranza dynamically
+  let estadoCobranza: EstadoCobranza = 'AL DIA';
+  if (saldoRestante === 0 || cuotasPendientes === 0 || c.estado === 'LIQUIDADO') {
+    estadoCobranza = 'LIQUIDADO';
+  } else if (c.estado === 'DESISTIDO') {
+    estadoCobranza = 'EN MORA';
+  } else {
+    const todayStr = new Date().toISOString().split('T')[0];
+    if (proximoVenc < todayStr) {
       estadoCobranza = 'EN MORA';
+    } else if (proximoVenc === todayStr) {
+      estadoCobranza = 'VENCE HOY';
     } else {
-      const todayStr = new Date().toISOString().split('T')[0];
-      if (proximoVenc < todayStr) {
-        estadoCobranza = 'EN MORA';
-      } else if (proximoVenc === todayStr) {
-        estadoCobranza = 'VENCE HOY';
-      } else {
-        const diffDays = Math.ceil((new Date(proximoVenc).getTime() - new Date(todayStr).getTime()) / (1000 * 3600 * 24));
-        estadoCobranza = diffDays <= 7 ? 'POR VENCER' : 'AL DIA';
-      }
+      const diffDays = Math.ceil((new Date(proximoVenc).getTime() - new Date(todayStr).getTime()) / (1000 * 3600 * 24));
+      estadoCobranza = diffDays <= 7 ? 'POR VENCER' : 'AL DIA';
     }
   }
 

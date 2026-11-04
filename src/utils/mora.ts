@@ -1,4 +1,4 @@
-import { ControlCobranza } from '../types/database';
+import { ControlCobranza, EstadoCobranza } from '../types/database';
 
 export interface MoraInfo {
   /** Número de cuotas cuyo vencimiento ya pasó y no han sido pagadas */
@@ -57,6 +57,11 @@ export const calcularMora = (c: ControlCobranza, hoy: Date = new Date()): MoraIn
     else break;
   }
 
+  // Si la fecha de vencimiento ya pasó pero el loop no la agregó por desfase, añadir al menos 1
+  if (numerosCuotas.length === 0 && primerVenc < today && pendientes > 0) {
+    numerosCuotas.push(primeraCuota);
+  }
+
   // Si la vista marca EN MORA pero el cálculo no detecta vencimientos, al menos 1 cuota está vencida
   if (numerosCuotas.length === 0 && c.estado_cobranza === 'EN MORA' && pendientes > 0) {
     numerosCuotas.push(primeraCuota);
@@ -77,4 +82,52 @@ export const nivelMora = (cuotasVencidas: number): 'leve' | 'moderada' | 'grave'
   if (cuotasVencidas === 1) return 'leve';
   if (cuotasVencidas <= 3) return 'moderada';
   return 'grave';
+};
+
+/**
+ * Determina dinámicamente el estado de cobranza exacto a la fecha actual (hoy).
+ * Corrige inconsistencias donde una cuota con vencimiento en el pasado
+ * aparecía como 'POR VENCER' o 'AL DIA' por datos desactualizados en BD.
+ */
+export const calcularEstadoCobranza = (
+  c: ControlCobranza,
+  mora?: MoraInfo,
+  hoy: Date = new Date()
+): EstadoCobranza => {
+  const isLiquidado = 
+    c.estado_cobranza === 'LIQUIDADO' || 
+    c.estado === 'LIQUIDADO' || 
+    Number(c.saldo_restante) <= 0 || 
+    Number(c.cuotas_pendientes) <= 0;
+  if (isLiquidado) return 'LIQUIDADO';
+
+  if (c.estado === 'DESISTIDO') return 'EN MORA';
+
+  const m = mora || calcularMora(c, hoy);
+  if (m.cuotasVencidas > 0) {
+    return 'EN MORA';
+  }
+
+  if (!c.proximo_vencimiento) {
+    return 'AL DIA';
+  }
+
+  const today = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate());
+  const primerVenc = parseISO(c.proximo_vencimiento);
+  if (!primerVenc) return 'AL DIA';
+
+  if (primerVenc < today) {
+    return 'EN MORA';
+  }
+
+  if (primerVenc.getTime() === today.getTime()) {
+    return 'VENCE HOY';
+  }
+
+  const diffDays = Math.ceil((primerVenc.getTime() - today.getTime()) / 86400000);
+  if (diffDays <= 7) {
+    return 'POR VENCER';
+  }
+
+  return 'AL DIA';
 };

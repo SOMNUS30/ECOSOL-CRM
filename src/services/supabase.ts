@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { ControlCobranza, Pago, Egreso, Cliente, Lote, Contrato, UsuarioSistema, EstadoCobranza, FormaCompra, MetodoPago, EmpresaConfig, RolUsuario } from '../types/database';
 import { initialCobranzas, initialUsuarios, generateRelationalSeed } from './seedData';
+import { calcularEstadoCobranza } from '../utils/mora';
 import masterLotesFallback from '../data_master_lotes.json';
 
 export const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://agaeaaskhhudknbvncku.supabase.co';
@@ -112,7 +113,8 @@ class SupabaseService {
       if (data && data.length > 0) {
         // Normalize rows and merge with local overrides
         const normalized: ControlCobranza[] = data.map((d: any, idx: number) => {
-          return {
+          const proxVenc = d.proximo_vencimiento || (d.fecha_primer_pago ? this.calculateDueDateFromBase(d.fecha_primer_pago, Number(d.cuotas_pagadas || 0)) : '');
+          const row: ControlCobranza = {
             contrato_id: d.contrato_id || (idx + 1),
             codigo_contrato: d.codigo_contrato,
             dni: d.dni,
@@ -130,11 +132,13 @@ class SupabaseService {
             cuotas_pagadas: Number(d.cuotas_pagadas || 0),
             cuotas_pendientes: Number(d.cuotas_pendientes || 0),
             saldo_restante: Number(d.saldo_restante || 0),
-            proximo_vencimiento: d.proximo_vencimiento || (d.fecha_primer_pago ? this.calculateDueDateFromBase(d.fecha_primer_pago, Number(d.cuotas_pagadas || 0)) : ''),
+            proximo_vencimiento: proxVenc,
             proximo_numero_cuota: Number(d.proximo_numero_cuota || (Number(d.cuotas_pagadas || 0) + 1)),
             estado_cobranza: (d.estado_cobranza || (d.saldo_restante === 0 ? 'LIQUIDADO' : 'AL DIA')) as EstadoCobranza,
             estado: d.estado || (d.saldo_restante === 0 ? 'LIQUIDADO' : 'ACTIVO')
           };
+          row.estado_cobranza = calcularEstadoCobranza(row);
+          return row;
         });
 
         // Live Supabase view is authoritative; persist to local cache and clear stale overrides
@@ -154,12 +158,12 @@ class SupabaseService {
     if (cached) {
       try {
         const parsed = JSON.parse(cached);
-        return this.applyLocalPaymentOverrides(parsed);
+        return this.applyLocalPaymentOverrides(parsed).map(c => ({ ...c, estado_cobranza: calcularEstadoCobranza(c) }));
       } catch {
         // Ignore JSON error
       }
     }
-    return this.applyLocalPaymentOverrides(initialCobranzas);
+    return this.applyLocalPaymentOverrides(initialCobranzas).map(c => ({ ...c, estado_cobranza: calcularEstadoCobranza(c) }));
   }
 
   // Get full relational stores with client-side synchronization

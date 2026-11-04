@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { useData } from '../../context/DataContext';
 import { useCompany } from '../../context/CompanyContext';
 import { ControlCobranza, Contrato } from '../../types/database';
-import { calcularMora, nivelMora, MoraInfo } from '../../utils/mora';
+import { calcularMora, nivelMora, MoraInfo, calcularEstadoCobranza } from '../../utils/mora';
 import { 
   Search,
   Eye, 
@@ -39,9 +39,17 @@ export const CobranzasModule: React.FC = () => {
     lotes = []
   } = useData();
 
-  // Enrich every contract with its overdue info (cuotas vencidas, monto, días de atraso)
+  // Enrich every contract with dynamic real-time overdue info and live status
   const cobranzas = useMemo(
-    () => rawCobranzas.map(c => ({ ...c, mora: calcularMora(c) })),
+    () => rawCobranzas.map(c => {
+      const mora = calcularMora(c);
+      const liveEstado = calcularEstadoCobranza(c, mora);
+      return {
+        ...c,
+        estado_cobranza: liveEstado,
+        mora
+      };
+    }),
     [rawCobranzas]
   );
   type CobranzaConMora = ControlCobranza & { mora: MoraInfo };
@@ -375,9 +383,9 @@ export const CobranzasModule: React.FC = () => {
     );
   };
 
-  // Minimalist status badge
-  const renderEstadoBadge = (c: ControlCobranza) => {
-    const isLiquidado = c.estado_cobranza === 'LIQUIDADO' || c.saldo_restante === 0 || c.cuotas_pendientes === 0;
+  // Minimalist status badge (real-time dynamic status: Vencido, Por Vencer, Vence Hoy, Al Día, Liquidado)
+  const renderEstadoBadge = (c: ControlCobranza & { mora?: MoraInfo }) => {
+    const isLiquidado = c.estado_cobranza === 'LIQUIDADO' || c.estado === 'LIQUIDADO' || Number(c.saldo_restante) <= 0 || Number(c.cuotas_pendientes) <= 0;
     if (isLiquidado) {
       return (
         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-medium bg-blue-50 text-blue-700 border border-blue-200">
@@ -387,20 +395,45 @@ export const CobranzasModule: React.FC = () => {
       );
     }
 
-    const est = c.estado_cobranza || 'AL DIA';
-    if (est === 'EN MORA') {
+    if (c.estado === 'DESISTIDO') {
       return (
-        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-medium bg-rose-50 text-rose-700 border border-rose-200">
-          <AlertTriangle className="w-3 h-3" />
-          En Mora
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-medium bg-slate-100 text-slate-600 border border-slate-200">
+          Desistido
         </span>
       );
     }
-    if (est === 'POR VENCER' || est === 'VENCE HOY') {
+
+    const est = c.estado_cobranza || 'AL DIA';
+    const cuotasVencidas = c.mora?.cuotasVencidas || 0;
+
+    // OVERDUE: Cuota vencida o en mora
+    if (est === 'EN MORA' || cuotasVencidas > 0) {
+      const labelText = cuotasVencidas > 1 ? ('Vencido (' + cuotasVencidas + ' cuotas)') : 'Vencido';
+      return (
+        <span 
+          title={c.mora?.vencidaDesde ? ('Vencido desde ' + c.mora.vencidaDesde + ' - ' + c.mora.diasAtraso + ' días de atraso') : 'Cuota vencida'}
+          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold bg-rose-50 text-rose-700 border border-rose-200"
+        >
+          <AlertTriangle className="w-3 h-3 text-rose-600" />
+          {labelText}
+        </span>
+      );
+    }
+
+    if (est === 'VENCE HOY') {
       return (
         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-medium bg-amber-50 text-amber-700 border border-amber-200">
           <Clock className="w-3 h-3" />
-          {est === 'VENCE HOY' ? 'Vence Hoy' : 'Por Vencer'}
+          Vence Hoy
+        </span>
+      );
+    }
+
+    if (est === 'POR VENCER') {
+      return (
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-medium bg-amber-50 text-amber-700 border border-amber-200">
+          <Clock className="w-3 h-3" />
+          Por Vencer
         </span>
       );
     }
@@ -753,7 +786,7 @@ export const CobranzasModule: React.FC = () => {
             <option value="ALL">Todos los Estados</option>
             <option value="AL DIA">Al Día</option>
             <option value="POR VENCER">Por Vencer</option>
-            <option value="EN MORA">En Mora</option>
+            <option value="EN MORA">Vencidos / En Mora</option>
             <option value="LIQUIDADO">Liquidado</option>
           </select>
         </div>

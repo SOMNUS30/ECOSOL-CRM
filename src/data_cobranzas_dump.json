@@ -151,7 +151,7 @@
     "saldo_restante": 15990,
     "proximo_vencimiento": "2026-09-30",
     "proximo_numero_cuota": 1,
-    "estado_cobranza": "POR VENCER"
+    "estado_cobranza": "EN MORA"
   },
   {
     "contrato_id": 134,
@@ -173,7 +173,7 @@
     "saldo_restante": 13500,
     "proximo_vencimiento": "2026-09-30",
     "proximo_numero_cuota": 1,
-    "estado_cobranza": "POR VENCER"
+    "estado_cobranza": "EN MORA"
   },
   {
     "contrato_id": 135,
@@ -195,7 +195,7 @@
     "saldo_restante": 13500,
     "proximo_vencimiento": "2026-09-30",
     "proximo_numero_cuota": 1,
-    "estado_cobranza": "POR VENCER"
+    "estado_cobranza": "EN MORA"
   },
   {
     "contrato_id": 137,
@@ -217,7 +217,7 @@
     "saldo_restante": 23053,
     "proximo_vencimiento": "2026-10-30",
     "proximo_numero_cuota": 1,
-    "estado_cobranza": "AL DIA"
+    "estado_cobranza": "EN MORA"
   },
   {
     "contrato_id": 138,
@@ -239,7 +239,7 @@
     "saldo_restante": 25456,
     "proximo_vencimiento": "2026-10-30",
     "proximo_numero_cuota": 1,
-    "estado_cobranza": "AL DIA"
+    "estado_cobranza": "EN MORA"
   },
   {
     "contrato_id": 1,
@@ -283,7 +283,7 @@
     "saldo_restante": 4750,
     "proximo_vencimiento": "2026-09-30",
     "proximo_numero_cuota": 23,
-    "estado_cobranza": "POR VENCER"
+    "estado_cobranza": "EN MORA"
   },
   {
     "contrato_id": 3,
@@ -349,7 +349,7 @@
     "saldo_restante": 4750,
     "proximo_vencimiento": "2026-09-30",
     "proximo_numero_cuota": 23,
-    "estado_cobranza": "POR VENCER"
+    "estado_cobranza": "EN MORA"
   },
   {
     "contrato_id": 7,
@@ -393,7 +393,7 @@
     "saldo_restante": 10048,
     "proximo_vencimiento": "2026-09-30",
     "proximo_numero_cuota": 23,
-    "estado_cobranza": "POR VENCER"
+    "estado_cobranza": "EN MORA"
   },
   {
     "contrato_id": 9,
@@ -437,7 +437,7 @@
     "saldo_restante": 4750,
     "proximo_vencimiento": "2026-10-30",
     "proximo_numero_cuota": 23,
-    "estado_cobranza": "AL DIA"
+    "estado_cobranza": "EN MORA"
   },
   {
     "contrato_id": 11,
@@ -503,7 +503,7 @@
     "saldo_restante": 4750,
     "proximo_vencimiento": "2026-10-30",
     "proximo_numero_cuota": 23,
-    "estado_cobranza": "AL DIA"
+    "estado_cobranza": "EN MORA"
   },
   {
     "contrato_id": 14,
@@ -547,7 +547,7 @@
     "saldo_restante": 4625,
     "proximo_vencimiento": "2026-10-30",
     "proximo_numero_cuota": 24,
-    "estado_cobranza": "AL DIA"
+    "estado_cobranza": "EN MORA"
   },
   {
     "contrato_id": 16,
@@ -569,7 +569,7 @@
     "saldo_restante": 4625,
     "proximo_vencimiento": "2026-10-30",
     "proximo_numero_cuota": 24,
-    "estado_cobranza": "AL DIA"
+    "estado_cobranza": "EN MORA"
   },
   {
     "contrato_id": 17,
@@ -591,7 +591,7 @@
     "saldo_restante": 8816,
     "proximo_vencimiento": "2026-09-30",
     "proximo_numero_cuota": 23,
-    "estado_cobranza": "POR VENCER"
+    "estado_cobranza": "EN MORA"
   },
   {
     "contrato_id": 18,
@@ -701,7 +701,7 @@
     "saldo_restante": 4750,
     "proximo_vencimiento": "2026-10-30",
     "proximo_numero_cuota": 23,
-    "estado_cobranza": "AL DIA"
+    "estado_cobranza": "EN MORA"
   },
   {
     "contrato_id": 23,
@@ -877,7 +877,7 @@
     "saldo_restante": 4625,
     "proximo_vencimiento": "2026-10-30",
     "proximo_numero_cuota": 24,
-    "estado_cobranza": "AL DIA"
+    "estado_cobranza": "EN MORA"
   },
   {
     "contrato_id": 32,
@@ -965,7 +965,7 @@
     "saldo_restante": 4625,
     "proximo_vencimiento": "2026-10-30",
     "proximo_numero_cuota": 24,
-    "estado_cobranza": "AL DIA"
+    "estado_cobranza": "EN MORA"
   },
   {
     "contrato_id": 36,
@@ -987,7 +987,7 @@
     "saldo_restante": 4750,
     "proximo_vencimiento": "2026-09-30",
     "proximo_numero_cuota": 23,
-    "estado_cobranza": "POR VENCER"
+    "estado_cobranza": "EN MORA"
   },
   {
     "contrato_id": 37,
@@ -1097,7 +1097,7 @@
     "saldo_restante": 7250,
     "proximo_vencimiento": "2026-09-30",
     "proximo_numero_cuota": 23,
-    "estado_cobranza": "POR VENCER"
+    "estado_cobranza": "EN MORA"
   },
   {
     "contrato_id": 42,
@@ -1317,7 +1317,7 @@
     "saldo_restante": 6346,
     "proximo_vencimiento": "2026-10-30",
     "proximo_numero_cuota": 23,
-    "estado_cobranza": "AL DIA"
+    "estado_cobranza": "EN MORA"
   },
   {
     "contrato_id": 53,
@@ -1339,7 +1339,7 @@
     "saldo_restante": 4625,
     "proximo_vencimiento": "2026-10-30",
     "proximo_numero_cuota": 24,
-    "estado_cobranza": "AL DIA"
+    "estado_cobranza": "EN MORA"
   },
   {
     "contrato_id": 54,
@@ -1361,7 +1361,7 @@
     "saldo_restante": 4750,
     "proximo_vencimiento": "2026-09-30",
     "proximo_numero_cuota": 23,
-    "estado_cobranza": "POR VENCER"
+    "estado_cobranza": "EN MORA"
   },
   {
     "contrato_id": 55,
@@ -1383,7 +1383,7 @@
     "saldo_restante": 6346,
     "proximo_vencimiento": "2026-10-30",
     "proximo_numero_cuota": 23,
-    "estado_cobranza": "AL DIA"
+    "estado_cobranza": "EN MORA"
   },
   {
     "contrato_id": 57,
@@ -1405,7 +1405,7 @@
     "saldo_restante": 4625,
     "proximo_vencimiento": "2026-10-30",
     "proximo_numero_cuota": 24,
-    "estado_cobranza": "AL DIA"
+    "estado_cobranza": "EN MORA"
   },
   {
     "contrato_id": 59,
@@ -1427,7 +1427,7 @@
     "saldo_restante": 5513,
     "proximo_vencimiento": "2026-10-30",
     "proximo_numero_cuota": 24,
-    "estado_cobranza": "AL DIA"
+    "estado_cobranza": "EN MORA"
   },
   {
     "contrato_id": 61,
@@ -1449,7 +1449,7 @@
     "saldo_restante": 6880,
     "proximo_vencimiento": "2026-10-28",
     "proximo_numero_cuota": 21,
-    "estado_cobranza": "AL DIA"
+    "estado_cobranza": "EN MORA"
   },
   {
     "contrato_id": 62,
@@ -1471,7 +1471,7 @@
     "saldo_restante": 6880,
     "proximo_vencimiento": "2026-10-28",
     "proximo_numero_cuota": 21,
-    "estado_cobranza": "AL DIA"
+    "estado_cobranza": "EN MORA"
   },
   {
     "contrato_id": 63,
@@ -1493,7 +1493,7 @@
     "saldo_restante": 17521.2,
     "proximo_vencimiento": "2026-10-28",
     "proximo_numero_cuota": 21,
-    "estado_cobranza": "AL DIA"
+    "estado_cobranza": "EN MORA"
   },
   {
     "contrato_id": 64,
@@ -1581,7 +1581,7 @@
     "saldo_restante": 8514,
     "proximo_vencimiento": "2026-10-30",
     "proximo_numero_cuota": 22,
-    "estado_cobranza": "AL DIA"
+    "estado_cobranza": "EN MORA"
   },
   {
     "contrato_id": 68,
@@ -1603,7 +1603,7 @@
     "saldo_restante": 8816,
     "proximo_vencimiento": "2026-09-30",
     "proximo_numero_cuota": 23,
-    "estado_cobranza": "POR VENCER"
+    "estado_cobranza": "EN MORA"
   },
   {
     "contrato_id": 69,
@@ -1647,7 +1647,7 @@
     "saldo_restante": 12989,
     "proximo_vencimiento": "2026-10-30",
     "proximo_numero_cuota": 20,
-    "estado_cobranza": "AL DIA"
+    "estado_cobranza": "EN MORA"
   },
   {
     "contrato_id": 71,
@@ -1669,7 +1669,7 @@
     "saldo_restante": 11048,
     "proximo_vencimiento": "2026-10-30",
     "proximo_numero_cuota": 20,
-    "estado_cobranza": "AL DIA"
+    "estado_cobranza": "EN MORA"
   },
   {
     "contrato_id": 72,
@@ -1735,7 +1735,7 @@
     "saldo_restante": 17112,
     "proximo_vencimiento": "2026-09-30",
     "proximo_numero_cuota": 19,
-    "estado_cobranza": "POR VENCER"
+    "estado_cobranza": "EN MORA"
   },
   {
     "contrato_id": 76,
@@ -1757,7 +1757,7 @@
     "saldo_restante": 10290.96,
     "proximo_vencimiento": "2026-10-30",
     "proximo_numero_cuota": 20,
-    "estado_cobranza": "AL DIA"
+    "estado_cobranza": "EN MORA"
   },
   {
     "contrato_id": 78,
@@ -1779,7 +1779,7 @@
     "saldo_restante": 10000,
     "proximo_vencimiento": "2026-09-30",
     "proximo_numero_cuota": 21,
-    "estado_cobranza": "POR VENCER"
+    "estado_cobranza": "EN MORA"
   },
   {
     "contrato_id": 79,
@@ -1801,7 +1801,7 @@
     "saldo_restante": 9534.28,
     "proximo_vencimiento": "2026-10-31",
     "proximo_numero_cuota": 22,
-    "estado_cobranza": "AL DIA"
+    "estado_cobranza": "EN MORA"
   },
   {
     "contrato_id": 80,
@@ -1823,7 +1823,7 @@
     "saldo_restante": 12522,
     "proximo_vencimiento": "2026-09-30",
     "proximo_numero_cuota": 19,
-    "estado_cobranza": "POR VENCER"
+    "estado_cobranza": "EN MORA"
   },
   {
     "contrato_id": 81,
@@ -1845,7 +1845,7 @@
     "saldo_restante": 17274,
     "proximo_vencimiento": "2026-10-30",
     "proximo_numero_cuota": 19,
-    "estado_cobranza": "AL DIA"
+    "estado_cobranza": "EN MORA"
   },
   {
     "contrato_id": 84,
@@ -1889,7 +1889,7 @@
     "saldo_restante": 12414,
     "proximo_vencimiento": "2026-09-30",
     "proximo_numero_cuota": 18,
-    "estado_cobranza": "POR VENCER"
+    "estado_cobranza": "EN MORA"
   },
   {
     "contrato_id": 87,
@@ -1911,7 +1911,7 @@
     "saldo_restante": 11442,
     "proximo_vencimiento": "2026-10-30",
     "proximo_numero_cuota": 19,
-    "estado_cobranza": "AL DIA"
+    "estado_cobranza": "EN MORA"
   },
   {
     "contrato_id": 88,
@@ -1933,7 +1933,7 @@
     "saldo_restante": 11442,
     "proximo_vencimiento": "2026-10-30",
     "proximo_numero_cuota": 19,
-    "estado_cobranza": "AL DIA"
+    "estado_cobranza": "EN MORA"
   },
   {
     "contrato_id": 89,
@@ -1955,7 +1955,7 @@
     "saldo_restante": 14663,
     "proximo_vencimiento": "2026-10-30",
     "proximo_numero_cuota": 18,
-    "estado_cobranza": "AL DIA"
+    "estado_cobranza": "EN MORA"
   },
   {
     "contrato_id": 90,
@@ -2065,7 +2065,7 @@
     "saldo_restante": 19704,
     "proximo_vencimiento": "2026-10-30",
     "proximo_numero_cuota": 15,
-    "estado_cobranza": "AL DIA"
+    "estado_cobranza": "EN MORA"
   },
   {
     "contrato_id": 96,
@@ -2131,7 +2131,7 @@
     "saldo_restante": 16913,
     "proximo_vencimiento": "2026-10-30",
     "proximo_numero_cuota": 12,
-    "estado_cobranza": "AL DIA"
+    "estado_cobranza": "EN MORA"
   },
   {
     "contrato_id": 101,
@@ -2241,7 +2241,7 @@
     "saldo_restante": 27695.5,
     "proximo_vencimiento": "2026-10-28",
     "proximo_numero_cuota": 9,
-    "estado_cobranza": "AL DIA"
+    "estado_cobranza": "EN MORA"
   },
   {
     "contrato_id": 106,
@@ -2307,7 +2307,7 @@
     "saldo_restante": 5590,
     "proximo_vencimiento": "2026-10-30",
     "proximo_numero_cuota": 8,
-    "estado_cobranza": "AL DIA"
+    "estado_cobranza": "EN MORA"
   },
   {
     "contrato_id": 110,
@@ -2329,7 +2329,7 @@
     "saldo_restante": 21029,
     "proximo_vencimiento": "2026-10-30",
     "proximo_numero_cuota": 8,
-    "estado_cobranza": "AL DIA"
+    "estado_cobranza": "EN MORA"
   },
   {
     "contrato_id": 111,
@@ -2527,7 +2527,7 @@
     "saldo_restante": 8000,
     "proximo_vencimiento": "2026-09-30",
     "proximo_numero_cuota": 6,
-    "estado_cobranza": "POR VENCER"
+    "estado_cobranza": "EN MORA"
   },
   {
     "contrato_id": 120,
@@ -2703,7 +2703,7 @@
     "saldo_restante": 15102,
     "proximo_vencimiento": "2026-09-30",
     "proximo_numero_cuota": 2,
-    "estado_cobranza": "POR VENCER"
+    "estado_cobranza": "EN MORA"
   },
   {
     "contrato_id": 131,
@@ -2725,7 +2725,7 @@
     "saldo_restante": 17091,
     "proximo_vencimiento": "2026-09-30",
     "proximo_numero_cuota": 2,
-    "estado_cobranza": "POR VENCER"
+    "estado_cobranza": "EN MORA"
   },
   {
     "contrato_id": 132,
@@ -2747,7 +2747,7 @@
     "saldo_restante": 23908,
     "proximo_vencimiento": "2026-10-30",
     "proximo_numero_cuota": 3,
-    "estado_cobranza": "AL DIA"
+    "estado_cobranza": "EN MORA"
   },
   {
     "contrato_id": 136,
@@ -2769,6 +2769,6 @@
     "saldo_restante": 21811,
     "proximo_vencimiento": "2026-10-30",
     "proximo_numero_cuota": 2,
-    "estado_cobranza": "AL DIA"
+    "estado_cobranza": "EN MORA"
   }
 ]

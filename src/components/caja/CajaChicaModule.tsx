@@ -16,6 +16,7 @@ import {
   RefreshCw, 
   AlertCircle,
   Calendar,
+  CalendarRange,
   Layers,
   FileText,
   DollarSign,
@@ -182,8 +183,82 @@ export const CajaChicaModule: React.FC = () => {
   const [egresoToDelete, setEgresoToDelete] = useState<Egreso | null>(null);
   const [isDeletingEgreso, setIsDeletingEgreso] = useState<boolean>(false);
 
-  // Month selector for Flujo & Ingresos & Egresos
+  // Month & Date Range Filters for Flujo, Ingresos & Egresos
+  const [filterMode, setFilterMode] = useState<'month' | 'range'>('range');
+  const [fechaDesde, setFechaDesde] = useState<string>('');
+  const [fechaHasta, setFechaHasta] = useState<string>('');
   const [selectedMonth, setSelectedMonth] = useState<string>('ALL');
+
+  // Check if date falls into current custom date range
+  const isDateInRange = (dateStr?: string) => {
+    if (!dateStr) return false;
+    const d = dateStr.slice(0, 10);
+    if (fechaDesde && d < fechaDesde) return false;
+    if (fechaHasta && d > fechaHasta) return false;
+    return true;
+  };
+
+  const formatDateDisplay = (dateStr: string) => {
+    if (!dateStr) return '';
+    const parts = dateStr.slice(0, 10).split('-');
+    if (parts.length === 3) {
+      return `${parts[2]}/${parts[1]}/${parts[0]}`;
+    }
+    return dateStr;
+  };
+
+  const activePeriodLabel = useMemo(() => {
+    if (filterMode === 'range') {
+      if (fechaDesde && fechaHasta) {
+        if (fechaDesde === fechaHasta) return `Día ${formatDateDisplay(fechaDesde)}`;
+        return `${formatDateDisplay(fechaDesde)} al ${formatDateDisplay(fechaHasta)}`;
+      }
+      if (fechaDesde) return `Desde ${formatDateDisplay(fechaDesde)}`;
+      if (fechaHasta) return `Hasta ${formatDateDisplay(fechaHasta)}`;
+      return 'Todo el Historial';
+    }
+    return formatMonthLabel(selectedMonth);
+  }, [filterMode, fechaDesde, fechaHasta, selectedMonth]);
+
+  const applyDatePreset = (preset: 'today' | 'last7' | 'thisMonth' | 'prevMonth' | 'last30' | 'thisYear' | 'all') => {
+    const now = new Date();
+    const pad = (n: number) => n.toString().padStart(2, '0');
+    const formatISO = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+
+    if (preset === 'today') {
+      const todayStr = formatISO(now);
+      setFechaDesde(todayStr);
+      setFechaHasta(todayStr);
+    } else if (preset === 'last7') {
+      const past = new Date(now.getTime() - 6 * 24 * 60 * 60 * 1000);
+      setFechaDesde(formatISO(past));
+      setFechaHasta(formatISO(now));
+    } else if (preset === 'thisMonth') {
+      const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
+      const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+      setFechaDesde(formatISO(firstDay));
+      setFechaHasta(formatISO(lastDay));
+    } else if (preset === 'prevMonth') {
+      const firstDay = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      const lastDay = new Date(now.getFullYear(), now.getMonth(), 0);
+      setFechaDesde(formatISO(firstDay));
+      setFechaHasta(formatISO(lastDay));
+    } else if (preset === 'last30') {
+      const past = new Date(now.getTime() - 29 * 24 * 60 * 60 * 1000);
+      setFechaDesde(formatISO(past));
+      setFechaHasta(formatISO(now));
+    } else if (preset === 'thisYear') {
+      const firstDay = `${now.getFullYear()}-01-01`;
+      const lastDay = `${now.getFullYear()}-12-31`;
+      setFechaDesde(firstDay);
+      setFechaHasta(lastDay);
+    } else if (preset === 'all') {
+      setFechaDesde('');
+      setFechaHasta('');
+    }
+    setIngresosPage(1);
+    setEgresosPage(1);
+  };
 
   // Ingresos Filters
   const [ingresosSearch, setIngresosSearch] = useState<string>('');
@@ -291,10 +366,16 @@ export const CajaChicaModule: React.FC = () => {
   // 3. Filtered Pagos (Ingresos)
   const filteredPagos = useMemo(() => {
     return pagos.filter(p => {
-      // Month
-      if (selectedMonth !== 'ALL') {
-        const ym = (p.fecha_pago || '').slice(0, 7);
-        if (ym !== selectedMonth) return false;
+      // Date filter (Range or Month)
+      if (filterMode === 'range') {
+        if (fechaDesde || fechaHasta) {
+          if (!isDateInRange(p.fecha_pago)) return false;
+        }
+      } else {
+        if (selectedMonth !== 'ALL') {
+          const ym = (p.fecha_pago || '').slice(0, 7);
+          if (ym !== selectedMonth) return false;
+        }
       }
 
       // Method
@@ -334,7 +415,7 @@ export const CajaChicaModule: React.FC = () => {
       if (cmp !== 0) return cmp;
       return Number(b.id || 0) - Number(a.id || 0);
     });
-  }, [pagos, selectedMonth, ingresosMethod, ingresosSearch, ingresosSort]);
+  }, [pagos, filterMode, fechaDesde, fechaHasta, selectedMonth, ingresosMethod, ingresosSearch, ingresosSort]);
 
   const ingresosTotalPages = Math.ceil(filteredPagos.length / ingresosPageSize) || 1;
   const paginatedPagos = useMemo(() => {
@@ -347,9 +428,20 @@ export const CajaChicaModule: React.FC = () => {
     return filteredPagos.reduce((sum, p) => sum + Number(p.monto || 0), 0);
   }, [filteredPagos]);
 
-  // Ingresos Summary for active month/filter
+  // Ingresos Summary for active period/month/filter
   const ingresosSummary = useMemo(() => {
-    const list = selectedMonth === 'ALL' ? pagos : pagos.filter(p => (p.fecha_pago || '').slice(0, 7) === selectedMonth);
+    const list = pagos.filter(p => {
+      if (filterMode === 'range') {
+        if (fechaDesde || fechaHasta) {
+          return isDateInRange(p.fecha_pago);
+        }
+        return true;
+      } else {
+        if (selectedMonth === 'ALL') return true;
+        return (p.fecha_pago || '').slice(0, 7) === selectedMonth;
+      }
+    });
+
     const total = list.reduce((sum, p) => sum + Number(p.monto || 0), 0);
     const count = list.length;
 
@@ -361,7 +453,7 @@ export const CajaChicaModule: React.FC = () => {
     });
 
     return { total, count, byMethod };
-  }, [pagos, selectedMonth]);
+  }, [pagos, filterMode, fechaDesde, fechaHasta, selectedMonth]);
 
   // 4. Egresos logic
   const activeCategories = useMemo(() => {
@@ -396,9 +488,16 @@ export const CajaChicaModule: React.FC = () => {
   };
 
   const monthScopedEgresos = useMemo(() => {
-    if (selectedMonth === 'ALL') return egresos;
-    return egresos.filter(e => (e.fecha || '').slice(0, 7) === selectedMonth);
-  }, [egresos, selectedMonth]);
+    if (filterMode === 'range') {
+      if (fechaDesde || fechaHasta) {
+        return egresos.filter(e => isDateInRange(e.fecha));
+      }
+      return egresos;
+    } else {
+      if (selectedMonth === 'ALL') return egresos;
+      return egresos.filter(e => (e.fecha || '').slice(0, 7) === selectedMonth);
+    }
+  }, [egresos, filterMode, fechaDesde, fechaHasta, selectedMonth]);
 
   const egresosSummary = useMemo(() => {
     const list = monthScopedEgresos;
@@ -423,9 +522,16 @@ export const CajaChicaModule: React.FC = () => {
 
   const filteredEgresos = useMemo(() => {
     return egresos.filter((e) => {
-      if (selectedMonth !== 'ALL') {
-        const ym = (e.fecha || '').slice(0, 7);
-        if (ym !== selectedMonth) return false;
+      // Date filter (Range or Month)
+      if (filterMode === 'range') {
+        if (fechaDesde || fechaHasta) {
+          if (!isDateInRange(e.fecha)) return false;
+        }
+      } else {
+        if (selectedMonth !== 'ALL') {
+          const ym = (e.fecha || '').slice(0, 7);
+          if (ym !== selectedMonth) return false;
+        }
       }
 
       if (searchDescription.trim()) {
@@ -444,7 +550,7 @@ export const CajaChicaModule: React.FC = () => {
 
       return true;
     });
-  }, [egresos, selectedMonth, searchDescription, selectedCategoria, selectedTipo]);
+  }, [egresos, filterMode, fechaDesde, fechaHasta, selectedMonth, searchDescription, selectedCategoria, selectedTipo]);
 
   const egresosTotalPages = Math.ceil(filteredEgresos.length / egresosPageSize) || 1;
   const paginatedEgresos = useMemo(() => {
@@ -814,36 +920,156 @@ export const CajaChicaModule: React.FC = () => {
         </div>
       </div>
 
-      {/* Month Filter Selector Bar */}
-      <div className="bg-white border border-slate-200 rounded-xl p-3 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <Calendar className="w-4 h-4 text-emerald-600" />
-          <span className="text-xs font-semibold text-slate-700">Periodo Contable:</span>
-          <select
-            value={selectedMonth}
-            onChange={(e) => {
-              setSelectedMonth(e.target.value);
-              setIngresosPage(1);
-              setEgresosPage(1);
-            }}
-            className="px-3 py-1.5 bg-slate-50 hover:bg-white focus:bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-800 focus:outline-none focus:ring-1 focus:ring-emerald-500 cursor-pointer transition-colors"
-          >
-            <option value="ALL">Todos los Meses (Consolidado Histórico)</option>
-            {availableMonths.map(m => (
-              <option key={m.value} value={m.value}>
-                {m.label} ({m.pagosCount} ingresos • {m.egresosCount} egresos)
-              </option>
-            ))}
-          </select>
+      {/* Date & Period Filter Selector Bar */}
+      <div className="bg-white border border-slate-200 rounded-xl p-3 shadow-xs flex flex-col gap-3">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          {/* Filter Mode Selector & Active Badge */}
+          <div className="flex flex-wrap items-center gap-2.5">
+            <div className="flex items-center p-1 bg-slate-100 border border-slate-200 rounded-lg text-xs font-medium">
+              <button
+                type="button"
+                onClick={() => { setFilterMode('range'); setIngresosPage(1); setEgresosPage(1); }}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md transition-all cursor-pointer ${
+                  filterMode === 'range'
+                    ? 'bg-white text-emerald-800 font-semibold shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <CalendarRange className="w-3.5 h-3.5 text-emerald-600" />
+                <span>Rango de Fechas</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => { setFilterMode('month'); setIngresosPage(1); setEgresosPage(1); }}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md transition-all cursor-pointer ${
+                  filterMode === 'month'
+                    ? 'bg-white text-emerald-800 font-semibold shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <Calendar className="w-3.5 h-3.5 text-emerald-600" />
+                <span>Por Mes Contable</span>
+              </button>
+            </div>
+
+            {/* Active Period Badge */}
+            <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 bg-emerald-50 border border-emerald-200/80 rounded-lg text-[11px] font-medium text-emerald-800">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-600"></span>
+              <span>Filtrando: <strong>{activePeriodLabel}</strong></span>
+            </div>
+          </div>
+
+          {/* Quick reset button */}
+          {((filterMode === 'range' && (fechaDesde || fechaHasta)) || (filterMode === 'month' && selectedMonth !== 'ALL')) && (
+            <button
+              onClick={() => {
+                if (filterMode === 'range') {
+                  setFechaDesde('');
+                  setFechaHasta('');
+                } else {
+                  setSelectedMonth('ALL');
+                }
+                setIngresosPage(1);
+                setEgresosPage(1);
+              }}
+              className="text-xs text-rose-600 hover:text-rose-700 font-semibold cursor-pointer flex items-center gap-1 self-end sm:self-auto hover:underline"
+            >
+              <X className="w-3.5 h-3.5" />
+              <span>Restablecer a todo el historial</span>
+            </button>
+          )}
         </div>
 
-        {selectedMonth !== 'ALL' && (
-          <button
-            onClick={() => { setSelectedMonth('ALL'); setIngresosPage(1); setEgresosPage(1); }}
-            className="text-xs text-emerald-600 hover:text-emerald-700 font-semibold cursor-pointer underline self-end sm:self-auto"
-          >
-            Ver consolidado anual
-          </button>
+        {/* Dynamic Controls based on filterMode */}
+        {filterMode === 'range' ? (
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 pt-2.5 border-t border-slate-100">
+            {/* Date Pickers */}
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 focus-within:ring-1 focus-within:ring-emerald-500 focus-within:bg-white transition-colors">
+                <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Desde:</span>
+                <input
+                  type="date"
+                  value={fechaDesde}
+                  onChange={(e) => {
+                    setFechaDesde(e.target.value);
+                    setIngresosPage(1);
+                    setEgresosPage(1);
+                  }}
+                  className="bg-transparent text-xs font-semibold text-slate-800 focus:outline-none cursor-pointer"
+                />
+              </div>
+
+              <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 focus-within:ring-1 focus-within:ring-emerald-500 focus-within:bg-white transition-colors">
+                <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Hasta:</span>
+                <input
+                  type="date"
+                  value={fechaHasta}
+                  onChange={(e) => {
+                    setFechaHasta(e.target.value);
+                    setIngresosPage(1);
+                    setEgresosPage(1);
+                  }}
+                  className="bg-transparent text-xs font-semibold text-slate-800 focus:outline-none cursor-pointer"
+                />
+              </div>
+
+              {(fechaDesde || fechaHasta) && (
+                <button
+                  type="button"
+                  onClick={() => { setFechaDesde(''); setFechaHasta(''); setIngresosPage(1); setEgresosPage(1); }}
+                  title="Limpiar fechas seleccionadas"
+                  className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+
+            {/* Quick Presets */}
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="text-[11px] font-medium text-slate-400 mr-1 hidden sm:inline">Rápido:</span>
+              {[
+                { label: 'Hoy', key: 'today' },
+                { label: 'Últimos 7 días', key: 'last7' },
+                { label: 'Este Mes', key: 'thisMonth' },
+                { label: 'Mes Anterior', key: 'prevMonth' },
+                { label: 'Últimos 30 días', key: 'last30' },
+                { label: 'Este Año', key: 'thisYear' },
+                { label: 'Todo el Historial', key: 'all' },
+              ].map((p) => (
+                <button
+                  key={p.key}
+                  type="button"
+                  onClick={() => applyDatePreset(p.key as any)}
+                  className="px-2.5 py-1 bg-slate-100 hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-300 border border-slate-200 rounded-md text-[11px] font-medium text-slate-600 transition-colors cursor-pointer"
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2.5 border-t border-slate-100">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-semibold text-slate-700">Periodo Contable:</span>
+              <select
+                value={selectedMonth}
+                onChange={(e) => {
+                  setSelectedMonth(e.target.value);
+                  setIngresosPage(1);
+                  setEgresosPage(1);
+                }}
+                className="px-3 py-1.5 bg-slate-50 hover:bg-white focus:bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-800 focus:outline-none focus:ring-1 focus:ring-emerald-500 cursor-pointer transition-colors"
+              >
+                <option value="ALL">Todos los Meses (Consolidado Histórico)</option>
+                {availableMonths.map(m => (
+                  <option key={m.value} value={m.value}>
+                    {m.label} ({m.pagosCount} ingresos • {m.egresosCount} egresos)
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
         )}
       </div>
 
@@ -897,7 +1123,7 @@ export const CajaChicaModule: React.FC = () => {
             <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-medium text-slate-500">
-                  Total Ingresos ({formatMonthLabel(selectedMonth)})
+                  Total Ingresos ({activePeriodLabel})
                 </span>
                 <div className="w-7 h-7 rounded-md bg-emerald-50 text-emerald-600 border border-emerald-200 flex items-center justify-center">
                   <ArrowUpRight className="w-4 h-4" />
@@ -917,7 +1143,7 @@ export const CajaChicaModule: React.FC = () => {
             <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-medium text-slate-500">
-                  Total Egresos ({formatMonthLabel(selectedMonth)})
+                  Total Egresos ({activePeriodLabel})
                 </span>
                 <div className="w-7 h-7 rounded-md bg-rose-50 text-rose-600 border border-rose-200 flex items-center justify-center">
                   <ArrowDownRight className="w-4 h-4" />
@@ -1143,9 +1369,14 @@ export const CajaChicaModule: React.FC = () => {
                     return (
                       <tr 
                         key={m.value} 
-                        onClick={() => { setSelectedMonth(m.value); }}
+                        onClick={() => {
+                          setFilterMode('month');
+                          setSelectedMonth(m.value);
+                          setIngresosPage(1);
+                          setEgresosPage(1);
+                        }}
                         className={`hover:bg-slate-50/80 transition-colors cursor-pointer ${
-                          selectedMonth === m.value ? 'bg-emerald-50/40' : ''
+                          filterMode === 'month' && selectedMonth === m.value ? 'bg-emerald-50/40' : ''
                         }`}
                       >
                         <td className="px-4 py-3 font-semibold text-slate-900">
@@ -1200,7 +1431,7 @@ export const CajaChicaModule: React.FC = () => {
             <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-medium text-slate-500">
-                  Recaudación {formatMonthLabel(selectedMonth)}
+                  Recaudación ({activePeriodLabel})
                 </span>
                 <div className="w-7 h-7 rounded-md bg-emerald-50 text-emerald-600 border border-emerald-200 flex items-center justify-center">
                   <DollarSign className="w-4 h-4" />
@@ -1277,12 +1508,34 @@ export const CajaChicaModule: React.FC = () => {
             </div>
           </div>
 
-          {/* Month Badges Quick Bar */}
+          {/* Month & Range Badges Quick Bar */}
           <div className="bg-white border border-slate-200 rounded-xl p-3 shadow-xs flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-thin">
+            {filterMode === 'range' && (fechaDesde || fechaHasta) && (
+              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 text-white shadow-xs shrink-0">
+                <CalendarRange className="w-3.5 h-3.5" />
+                <span>Rango: {activePeriodLabel}</span>
+                <button
+                  type="button"
+                  onClick={() => { setFechaDesde(''); setFechaHasta(''); setIngresosPage(1); }}
+                  className="ml-1 hover:text-emerald-200 cursor-pointer"
+                  title="Quitar filtro de rango de fechas"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </div>
+            )}
             <button
-              onClick={() => { setSelectedMonth('ALL'); setIngresosPage(1); }}
+              onClick={() => {
+                if (filterMode === 'range') {
+                  setFechaDesde('');
+                  setFechaHasta('');
+                } else {
+                  setSelectedMonth('ALL');
+                }
+                setIngresosPage(1);
+              }}
               className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all shrink-0 cursor-pointer ${
-                selectedMonth === 'ALL'
+                (filterMode === 'month' && selectedMonth === 'ALL') || (filterMode === 'range' && !fechaDesde && !fechaHasta)
                   ? 'bg-emerald-600 text-white font-semibold shadow-xs'
                   : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
               }`}
@@ -1292,16 +1545,20 @@ export const CajaChicaModule: React.FC = () => {
             {availableMonths.map(m => (
               <button
                 key={m.value}
-                onClick={() => { setSelectedMonth(m.value); setIngresosPage(1); }}
+                onClick={() => {
+                  setFilterMode('month');
+                  setSelectedMonth(m.value);
+                  setIngresosPage(1);
+                }}
                 className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all shrink-0 cursor-pointer flex items-center gap-1.5 ${
-                  selectedMonth === m.value
+                  filterMode === 'month' && selectedMonth === m.value
                     ? 'bg-emerald-600 text-white font-semibold shadow-xs'
                     : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200'
                 }`}
               >
                 <span>{m.label}</span>
                 <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${
-                  selectedMonth === m.value ? 'bg-emerald-700 text-white' : 'bg-emerald-50 text-emerald-700 font-semibold'
+                  filterMode === 'month' && selectedMonth === m.value ? 'bg-emerald-700 text-white' : 'bg-emerald-50 text-emerald-700 font-semibold'
                 }`}>
                   {m.pagosCount}
                 </span>
@@ -1385,7 +1642,9 @@ export const CajaChicaModule: React.FC = () => {
                   )}
                 </div>
                 <p className="text-[11px] text-slate-500 mt-0.5">
-                  {selectedMonth === 'ALL' ? 'Total recaudado en todo el historial' : `Total recaudado en el periodo ${formatMonthLabel(selectedMonth)}`}
+                  {filterMode === 'range'
+                    ? (fechaDesde || fechaHasta ? `Total recaudado en el periodo ${activePeriodLabel}` : 'Total recaudado en todo el historial')
+                    : (selectedMonth === 'ALL' ? 'Total recaudado en todo el historial' : `Total recaudado en el periodo ${formatMonthLabel(selectedMonth)}`)}
                   {ingresosSearch.trim() || ingresosMethod !== 'ALL' ? ' con los filtros activos' : ''}
                 </p>
               </div>
@@ -1621,7 +1880,7 @@ export const CajaChicaModule: React.FC = () => {
             <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-medium text-slate-500">
-                  {selectedMonth !== 'ALL' ? `Total Egresos (${formatMonthLabel(selectedMonth)})` : 'Total Egresos Reales'}
+                  Total Egresos ({activePeriodLabel})
                 </span>
                 <div className="w-7 h-7 rounded-md bg-rose-50 text-rose-600 border border-rose-200 flex items-center justify-center">
                   <TrendingDown className="w-3.5 h-3.5" />
@@ -1684,7 +1943,7 @@ export const CajaChicaModule: React.FC = () => {
               <div className="flex items-center justify-between mb-3">
                 <span className="text-xs font-semibold text-slate-800 flex items-center gap-1.5">
                   <PieIcon className="w-3.5 h-3.5 text-slate-400" />
-                  Distribución por Categorías ({formatMonthLabel(selectedMonth)})
+                  Distribución por Categorías ({activePeriodLabel})
                 </span>
               </div>
 
@@ -1839,7 +2098,9 @@ export const CajaChicaModule: React.FC = () => {
                   )}
                 </div>
                 <p className="text-[11px] text-slate-500 mt-0.5">
-                  {selectedMonth === 'ALL' ? 'Total acumulado en todo el historial' : `Total acumulado en el periodo ${formatMonthLabel(selectedMonth)}`}
+                  {filterMode === 'range'
+                    ? (fechaDesde || fechaHasta ? `Total acumulado en el periodo ${activePeriodLabel}` : 'Total acumulado en todo el historial')
+                    : (selectedMonth === 'ALL' ? 'Total acumulado en todo el historial' : `Total acumulado en el periodo ${formatMonthLabel(selectedMonth)}`)}
                   {searchDescription.trim() || selectedTipo !== 'ALL' || selectedCategoria !== 'ALL' ? ' con los filtros activos' : ''}
                 </p>
               </div>

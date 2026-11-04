@@ -1,10 +1,11 @@
 import React, { useState, useMemo } from 'react';
 import { useData } from '../../context/DataContext';
 import { useCompany } from '../../context/CompanyContext';
-import { ControlCobranza } from '../../types/database';
+import { ControlCobranza, Contrato } from '../../types/database';
 import { calcularMora, nivelMora, MoraInfo } from '../../utils/mora';
 import { 
-  Search, 
+  Search,
+  Eye, 
   Download, 
   CreditCard, 
   MessageCircle, 
@@ -26,7 +27,17 @@ import {
 import { ReporteCuotasVencidasModal } from './ReporteCuotasVencidasModal';
 
 export const CobranzasModule: React.FC = () => {
-  const { cobranzas: rawCobranzas, setSelectedContractForPayment, loading, setIsNuevoClienteModalOpen, pagos = [] } = useData();
+  const { 
+    cobranzas: rawCobranzas, 
+    setSelectedContractForPayment, 
+    loading, 
+    setIsNuevoClienteModalOpen, 
+    pagos = [],
+    contratos = [],
+    setSelectedContractDetail,
+    clientes = [],
+    lotes = []
+  } = useData();
 
   // Enrich every contract with its overdue info (cuotas vencidas, monto, días de atraso)
   const cobranzas = useMemo(
@@ -400,6 +411,92 @@ export const CobranzasModule: React.FC = () => {
         Al Día
       </span>
     );
+  };
+
+
+  // Handler to open full client & contract record (ficha)
+  const handleVerFicha = (c: ControlCobranza) => {
+    // 1. Direct match by contract code or id in contratos array
+    let found = contratos.find(ctr => 
+      (c.codigo_contrato && ctr.codigo_contrato === c.codigo_contrato) ||
+      (c.contrato_id && String(ctr.id) === String(c.contrato_id))
+    );
+
+    // 2. Secondary match by client DNI or lote manzana/numero_lote
+    if (!found) {
+      found = contratos.find(ctr => {
+        const cli = ctr.cliente || (ctr as any).clientes;
+        const lt = ctr.lote || (ctr as any).lotes;
+        if (c.dni && cli?.dni && String(cli.dni).trim() === String(c.dni).trim()) return true;
+        if (
+          c.manzana && c.numero_lote && lt &&
+          String(lt.manzana).toUpperCase().trim() === String(c.manzana).toUpperCase().trim() &&
+          String(lt.numero_lote).trim() === String(c.numero_lote).trim()
+        ) {
+          return true;
+        }
+        return false;
+      });
+    }
+
+    if (found) {
+      setSelectedContractDetail(found);
+      return;
+    }
+
+    // 3. Fallback: synthesize a complete Contrato object matching Contrato schema
+    const matchedCliente = clientes.find(cl => 
+      (c.dni && String(cl.dni).trim() === String(c.dni).trim()) ||
+      (cl.nombres_apellidos && c.propietario && cl.nombres_apellidos.trim().toLowerCase() === c.propietario.trim().toLowerCase())
+    ) || {
+      id: 0,
+      dni: c.dni || '',
+      nombres_apellidos: c.propietario || 'Cliente',
+      telefono: c.telefono || '',
+      direccion: '',
+      correo: '',
+      distrito: '',
+      provincia: '',
+      departamento: ''
+    };
+
+    const matchedLote = lotes.find(l => 
+      String(l.manzana).toUpperCase().trim() === String(c.manzana || '').toUpperCase().trim() &&
+      String(l.numero_lote).trim() === String(c.numero_lote || '').trim() &&
+      (!c.etapa || Number(l.etapa) === Number(c.etapa))
+    ) || {
+      id: 0,
+      etapa: Number(c.etapa) || 1,
+      manzana: c.manzana || 'A',
+      numero_lote: String(c.numero_lote || '1'),
+      area_m2: 120,
+      precio_lista: Number(c.precio_venta) || 0,
+      estado: 'VENDIDO' as const
+    };
+
+    const estadoContrato: 'ACTIVO' | 'LIQUIDADO' | 'DESISTIDO' = 
+      c.estado === 'LIQUIDADO' || c.saldo_restante === 0 
+        ? 'LIQUIDADO' 
+        : (c.estado === 'DESISTIDO' ? 'DESISTIDO' : 'ACTIVO');
+
+    const syntheticContrato: Contrato = {
+      id: Number(c.contrato_id) || 0,
+      codigo_contrato: c.codigo_contrato,
+      cliente_id: matchedCliente.id,
+      lote_id: matchedLote.id,
+      fecha_primer_pago: c.fecha_primer_pago || c.proximo_vencimiento || new Date().toISOString().split('T')[0],
+      forma_compra: Number(c.total_cuotas) > 0 ? 'CREDITO' : 'CONTADO',
+      precio_venta: Number(c.precio_venta) || 0,
+      monto_inicial: Number(c.monto_inicial) || 0,
+      saldo_financiar: Number(c.saldo_financiar) || (Number(c.precio_venta) - Number(c.monto_inicial)),
+      cantidad_cuotas: Number(c.total_cuotas) || 0,
+      monto_cuota: Number(c.monto_cuota) || 0,
+      estado: estadoContrato,
+      cliente: matchedCliente as any,
+      lote: matchedLote as any
+    };
+
+    setSelectedContractDetail(syntheticContrato);
   };
 
   return (
@@ -785,7 +882,7 @@ export const CobranzasModule: React.FC = () => {
                 <th className="px-4 py-3 text-right">Cuota</th>
                 <th className="px-4 py-3 text-right">Saldo Restante</th>
                 <th className="px-4 py-3 text-center">Estado</th>
-                <th className="px-4 py-3 text-center">Acción</th>
+                <th className="px-4 py-3 text-center">Acciones</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-slate-700">
@@ -821,9 +918,15 @@ export const CobranzasModule: React.FC = () => {
                     <tr key={c.codigo_contrato} className="hover:bg-slate-50/80 transition-colors">
                       {/* Contrato & Lote */}
                       <td className="px-4 py-3">
-                        <div className="font-semibold text-slate-900 font-mono text-xs">
-                          {c.codigo_contrato}
-                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleVerFicha(c)}
+                          className="font-semibold text-slate-900 font-mono text-xs hover:text-emerald-600 transition-colors cursor-pointer text-left flex items-center gap-1 group"
+                          title="Clic para ver ficha completa"
+                        >
+                          <span>{c.codigo_contrato}</span>
+                          <Eye className="w-3 h-3 text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity" />
+                        </button>
                         <div className="text-[11px] text-slate-500 mt-0.5 flex items-center gap-1">
                           <Building2 className="w-3 h-3 text-slate-400" />
                           <span>Etapa {c.etapa} • Mz {c.manzana} • Lt {c.numero_lote}</span>
@@ -832,9 +935,14 @@ export const CobranzasModule: React.FC = () => {
 
                       {/* Propietario / WhatsApp */}
                       <td className="px-4 py-3">
-                        <div className="font-medium text-slate-800 text-xs truncate max-w-xs">
+                        <button
+                          type="button"
+                          onClick={() => handleVerFicha(c)}
+                          className="font-medium text-slate-800 text-xs truncate max-w-xs hover:text-emerald-600 transition-colors cursor-pointer text-left block"
+                          title="Clic para ver ficha del cliente"
+                        >
                           {c.propietario}
-                        </div>
+                        </button>
                         <div className="flex items-center gap-2.5 mt-0.5 text-[11px] text-slate-500">
                           <span>DNI {c.dni}</span>
                           {c.telefono && (
@@ -987,15 +1095,28 @@ export const CobranzasModule: React.FC = () => {
                         {renderEstadoBadge(c)}
                       </td>
 
-                      {/* Action Button: Registrar Pago */}
+                      {/* Action Buttons: Ver Ficha & Registrar Pago */}
                       <td className="px-4 py-3 text-center whitespace-nowrap">
-                        <button
-                          onClick={() => setSelectedContractForPayment(c)}
-                          className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg shadow-xs transition-colors cursor-pointer"
-                        >
-                          <CreditCard className="w-3 h-3" />
-                          <span>Pagar</span>
-                        </button>
+                        <div className="flex items-center justify-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => handleVerFicha(c)}
+                            title="Ver ficha completa del cliente y contrato"
+                            className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:text-slate-900 bg-white hover:bg-slate-50 border border-slate-200 rounded-lg shadow-xs transition-colors cursor-pointer"
+                          >
+                            <Eye className="w-3 h-3 text-slate-500" />
+                            <span>Ficha</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setSelectedContractForPayment(c)}
+                            title="Registrar nuevo pago / cuota"
+                            className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg shadow-xs transition-colors cursor-pointer"
+                          >
+                            <CreditCard className="w-3 h-3" />
+                            <span>Pagar</span>
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );

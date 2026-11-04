@@ -55,7 +55,7 @@ export const RegistrarAbonoModal: React.FC<RegistrarAbonoModalProps> = ({ contra
 
       setMonto(String(defaultMonto));
       setTipoPago('CUOTA');
-      setNumeroOperacion(`OP-${Math.floor(100000 + Math.random() * 900000)}`);
+      setNumeroOperacion('');
       setErrorMsg(null);
     }
   }, [contract]);
@@ -280,7 +280,7 @@ export const RegistrarAbonoModal: React.FC<RegistrarAbonoModalProps> = ({ contra
                   type="text"
                   value={numeroOperacion}
                   onChange={(e) => setNumeroOperacion(e.target.value)}
-                  placeholder="Ej: OP-984321"
+                  placeholder="Ingresa el N° de operación bancaria..."
                   className="w-full pl-8 pr-3 py-2 bg-white border border-slate-200 rounded-lg text-slate-800 font-mono text-xs uppercase focus:outline-none focus:ring-1 focus:ring-emerald-500"
                   required
                 />

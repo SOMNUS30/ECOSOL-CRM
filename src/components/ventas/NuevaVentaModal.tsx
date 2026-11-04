@@ -166,7 +166,7 @@ export const NuevaVentaModal: React.FC<NuevaVentaModalProps> = ({
       setErrorMsg(null);
       setShowClientDropdown(false);
       setClientSearchTerm('');
-      setNumeroOperacion(`OP-${Math.floor(100000 + Math.random() * 900000)}`);
+      setNumeroOperacion('');
       
       if (user?.nombres) {
         setAsesor(user.nombres);
@@ -936,7 +936,7 @@ export const NuevaVentaModal: React.FC<NuevaVentaModalProps> = ({
                         type="text"
                         value={numeroOperacion}
                         onChange={(e) => setNumeroOperacion(e.target.value)}
-                        placeholder="Ej: OP-984210"
+                        placeholder="Ingresa el N° de operación bancaria..."
                         className="w-full pl-8 pr-3 py-2 bg-white border border-slate-200 rounded-lg text-slate-900 font-mono text-xs uppercase focus:outline-none focus:ring-1 focus:ring-emerald-500"
                         required
                       />

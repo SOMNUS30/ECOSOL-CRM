@@ -21,8 +21,12 @@ import {
   PieChart as PieIcon,
   Layers,
   CheckCircle2,
-  Filter
+  Filter,
+  RotateCcw,
+  UserX
 } from 'lucide-react';
+import { DesistirClienteModal } from '../cobranzas/DesistirClienteModal';
+import { ReactivarClienteModal } from '../cobranzas/ReactivarClienteModal';
 import {
   ResponsiveContainer,
   BarChart,
@@ -78,6 +82,8 @@ export const VentasModule: React.FC = () => {
 
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
   const [localError, setLocalError] = useState<string | null>(null);
+  const [contratoToDesistir, setContratoToDesistir] = useState<Contrato | null>(null);
+  const [contratoToReactivar, setContratoToReactivar] = useState<Contrato | null>(null);
 
   const loading = (loadingContratos && globalContratos.length === 0) || isRefreshing;
   const error = contratosError || localError;
@@ -1015,13 +1021,35 @@ export const VentasModule: React.FC = () => {
                           </td>
 
                           <td className="px-4 py-3 text-center whitespace-nowrap">
-                            <button
-                              onClick={() => setSelectedContractDetail(ctr)}
-                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium text-slate-700 hover:text-slate-900 bg-white hover:bg-slate-50 border border-slate-200 transition-colors cursor-pointer shadow-xs"
-                            >
-                              <Eye className="w-3.5 h-3.5 text-slate-500" />
-                              <span>Ver Ficha</span>
-                            </button>
+                            <div className="flex items-center justify-center gap-1.5">
+                              <button
+                                onClick={() => setSelectedContractDetail(ctr)}
+                                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium text-slate-700 hover:text-slate-900 bg-white hover:bg-slate-50 border border-slate-200 transition-colors cursor-pointer shadow-xs"
+                              >
+                                <Eye className="w-3.5 h-3.5 text-slate-500" />
+                                <span>Ver Ficha</span>
+                              </button>
+                              {ctr.estado === 'DESISTIDO' ? (
+                                <button
+                                  type="button"
+                                  onClick={() => setContratoToReactivar(ctr)}
+                                  title="Reactivar contrato"
+                                  className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-semibold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 transition-colors cursor-pointer shadow-2xs"
+                                >
+                                  <RotateCcw className="w-3 h-3 text-emerald-700" />
+                                  <span>Reactivar</span>
+                                </button>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => setContratoToDesistir(ctr)}
+                                  title="Desistir cliente / contrato"
+                                  className="p-1 text-slate-400 hover:text-rose-700 hover:bg-rose-50 rounded-md transition-colors cursor-pointer"
+                                >
+                                  <UserX className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                            </div>
                           </td>
                         </tr>
                       );
@@ -1259,13 +1287,35 @@ export const VentasModule: React.FC = () => {
                           </td>
 
                           <td className="px-4 py-3 text-center whitespace-nowrap">
-                            <button
-                              onClick={() => setSelectedContractDetail(ctr)}
-                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium text-slate-700 hover:text-slate-900 bg-white hover:bg-slate-50 border border-slate-200 transition-colors cursor-pointer shadow-xs"
-                            >
-                              <Eye className="w-3.5 h-3.5 text-slate-500" />
-                              <span>Ver Ficha</span>
-                            </button>
+                            <div className="flex items-center justify-center gap-1.5">
+                              <button
+                                onClick={() => setSelectedContractDetail(ctr)}
+                                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium text-slate-700 hover:text-slate-900 bg-white hover:bg-slate-50 border border-slate-200 transition-colors cursor-pointer shadow-xs"
+                              >
+                                <Eye className="w-3.5 h-3.5 text-slate-500" />
+                                <span>Ver Ficha</span>
+                              </button>
+                              {ctr.estado === 'DESISTIDO' ? (
+                                <button
+                                  type="button"
+                                  onClick={() => setContratoToReactivar(ctr)}
+                                  title="Reactivar contrato"
+                                  className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-semibold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 transition-colors cursor-pointer shadow-2xs"
+                                >
+                                  <RotateCcw className="w-3 h-3 text-emerald-700" />
+                                  <span>Reactivar</span>
+                                </button>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => setContratoToDesistir(ctr)}
+                                  title="Desistir cliente / contrato"
+                                  className="p-1 text-slate-400 hover:text-rose-700 hover:bg-rose-50 rounded-md transition-colors cursor-pointer"
+                                >
+                                  <UserX className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                            </div>
                           </td>
                         </tr>
                       );
@@ -1303,6 +1353,18 @@ export const VentasModule: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Modales de Desistir y Reactivar */}
+      <DesistirClienteModal
+        isOpen={!!contratoToDesistir}
+        onClose={() => setContratoToDesistir(null)}
+        target={contratoToDesistir}
+      />
+      <ReactivarClienteModal
+        isOpen={!!contratoToReactivar}
+        onClose={() => setContratoToReactivar(null)}
+        target={contratoToReactivar}
+      />
     </div>
   );
 };

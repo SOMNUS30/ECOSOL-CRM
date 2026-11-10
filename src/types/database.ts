@@ -15,7 +15,7 @@ export type CategoriaEgreso =
   | 'OTROS'
   | string;
 
-export type EstadoCobranza = 'AL DIA' | 'VENCE HOY' | 'POR VENCER' | 'EN MORA' | 'LIQUIDADO';
+export type EstadoCobranza = 'AL DIA' | 'VENCE HOY' | 'POR VENCER' | 'EN MORA' | 'LIQUIDADO' | 'DESISTIDO';
 
 export type RolUsuario = 'Administrador' | 'Cobranzas / Caja' | 'Asesor de Ventas';
 

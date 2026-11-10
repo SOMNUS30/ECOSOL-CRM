@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import { ControlCobranza, Pago, Egreso, Cliente, Lote, Contrato, UsuarioSistema, EstadoCobranza, FormaCompra, MetodoPago, EmpresaConfig, RolUsuario } from '../types/database';
+import { ControlCobranza, Pago, Egreso, Cliente, Lote, Contrato, UsuarioSistema, EstadoCobranza, FormaCompra, MetodoPago, EmpresaConfig, RolUsuario, EstadoLote, EstadoContrato } from '../types/database';
 import { initialCobranzas, initialUsuarios, generateRelationalSeed } from './seedData';
 import { calcularEstadoCobranza } from '../utils/mora';
 import masterLotesFallback from '../data_master_lotes.json';
@@ -419,6 +419,150 @@ class SupabaseService {
     } catch (err: any) {
       console.error('Error during bulk lot update:', err);
       return { success: false, count: 0, error: err?.message || 'Error masivo de sincronización' };
+    }
+  }
+
+  // Mark contract/client as DESISTIDO, optionally freeing the lot back to DISPONIBLE
+  async desistirContrato(
+    contratoId: number | string,
+    loteId?: number | string,
+    nuevoEstadoLote: EstadoLote = 'DISPONIBLE',
+    motivo?: string
+  ): Promise<{ success: boolean; error: string | null }> {
+    try {
+      // 1. Update contratos table in Supabase
+      const { error: contratoError } = await supabase
+        .from('contratos')
+        .update({ 
+          estado: 'DESISTIDO',
+          ...(motivo ? { observaciones: motivo } : {})
+        })
+        .eq('id', contratoId);
+
+      if (contratoError) {
+        console.warn('Warning updating contrato to DESISTIDO in Supabase:', contratoError.message);
+      }
+
+      // 2. Update lotes table in Supabase if loteId provided
+      if (loteId) {
+        const { error: loteError } = await supabase
+          .from('lotes')
+          .update({ estado: nuevoEstadoLote })
+          .eq('id', loteId);
+
+        if (loteError) {
+          console.warn('Warning updating lote to', nuevoEstadoLote, 'in Supabase:', loteError.message);
+        }
+      }
+
+      // 3. Update local storage caches
+      const currentContratos = this.getStoredContratos();
+      const updatedContratos = currentContratos.map(c => 
+        String(c.id) === String(contratoId) 
+          ? { ...c, estado: 'DESISTIDO' as EstadoContrato, ...(motivo ? { observaciones: motivo } : {}) } 
+          : c
+      );
+      localStorage.setItem(STORAGE_KEYS.CONTRATOS, JSON.stringify(updatedContratos));
+
+      if (loteId) {
+        const currentLotes = this.getStoredLotes();
+        const updatedLotes = currentLotes.map(l => 
+          String(l.id) === String(loteId) 
+            ? { ...l, estado: nuevoEstadoLote } 
+            : l
+        );
+        localStorage.setItem(STORAGE_KEYS.LOTES, JSON.stringify(updatedLotes));
+      }
+
+      const currentCobranzas = this.getCachedCobranzas();
+      const targetContrato = currentContratos.find(c => String(c.id) === String(contratoId));
+      const targetCode = targetContrato?.codigo_contrato;
+
+      const updatedCobranzas = currentCobranzas.map(c => {
+        const match = String(c.contrato_id) === String(contratoId) || (targetCode && c.codigo_contrato === targetCode);
+        if (match) {
+          return {
+            ...c,
+            estado: 'DESISTIDO',
+            estado_cobranza: 'DESISTIDO' as EstadoCobranza
+          };
+        }
+        return c;
+      });
+      localStorage.setItem(STORAGE_KEYS.COBRANZAS, JSON.stringify(updatedCobranzas));
+
+      return { success: true, error: null };
+    } catch (err: any) {
+      console.error('Error al desistir contrato:', err);
+      return { success: false, error: err?.message || 'Error inesperado al desistir contrato' };
+    }
+  }
+
+  // Reactivate a previously DESISTIDO contract back to ACTIVO and lot back to VENDIDO
+  async reactivarContrato(
+    contratoId: number | string,
+    loteId?: number | string
+  ): Promise<{ success: boolean; error: string | null }> {
+    try {
+      const { error: contratoError } = await supabase
+        .from('contratos')
+        .update({ estado: 'ACTIVO' })
+        .eq('id', contratoId);
+
+      if (contratoError) {
+        console.warn('Warning reactivating contrato in Supabase:', contratoError.message);
+      }
+
+      if (loteId) {
+        const { error: loteError } = await supabase
+          .from('lotes')
+          .update({ estado: 'VENDIDO' })
+          .eq('id', loteId);
+
+        if (loteError) {
+          console.warn('Warning updating lote to VENDIDO in Supabase:', loteError.message);
+        }
+      }
+
+      const currentContratos = this.getStoredContratos();
+      const updatedContratos = currentContratos.map(c => 
+        String(c.id) === String(contratoId) 
+          ? { ...c, estado: 'ACTIVO' as EstadoContrato } 
+          : c
+      );
+      localStorage.setItem(STORAGE_KEYS.CONTRATOS, JSON.stringify(updatedContratos));
+
+      if (loteId) {
+        const currentLotes = this.getStoredLotes();
+        const updatedLotes = currentLotes.map(l => 
+          String(l.id) === String(loteId) 
+            ? { ...l, estado: 'VENDIDO' as EstadoLote } 
+            : l
+        );
+        localStorage.setItem(STORAGE_KEYS.LOTES, JSON.stringify(updatedLotes));
+      }
+
+      const currentCobranzas = this.getCachedCobranzas();
+      const targetContrato = currentContratos.find(c => String(c.id) === String(contratoId));
+      const targetCode = targetContrato?.codigo_contrato;
+
+      const updatedCobranzas = currentCobranzas.map(c => {
+        const match = String(c.contrato_id) === String(contratoId) || (targetCode && c.codigo_contrato === targetCode);
+        if (match) {
+          const renewed = { ...c, estado: 'ACTIVO' };
+          return {
+            ...renewed,
+            estado_cobranza: calcularEstadoCobranza(renewed)
+          };
+        }
+        return c;
+      });
+      localStorage.setItem(STORAGE_KEYS.COBRANZAS, JSON.stringify(updatedCobranzas));
+
+      return { success: true, error: null };
+    } catch (err: any) {
+      console.error('Error al reactivar contrato:', err);
+      return { success: false, error: err?.message || 'Error inesperado al reactivar contrato' };
     }
   }
 

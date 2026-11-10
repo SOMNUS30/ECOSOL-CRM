@@ -24,7 +24,8 @@ import {
   TrendingUp,
   Percent,
   Layers,
-  ArrowRight
+  ArrowRight,
+  UserX
 } from 'lucide-react';
 
 interface ReporteCuotasVencidasModalProps {
@@ -74,6 +75,7 @@ export const ReporteCuotasVencidasModal: React.FC<ReporteCuotasVencidasModalProp
   const [selectedManzana, setSelectedManzana] = useState<string>('ALL');
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [sortBy, setSortBy] = useState<'CUOTAS_VENCIDAS_DESC' | 'RESTANTE_DESC' | 'VALOR_DESC' | 'PAGADAS_DESC' | 'NOMBRE_ASC'>('CUOTAS_VENCIDAS_DESC');
+  const [incluirDesistidos, setIncluirDesistidos] = useState<boolean>(false);
   const [isExporting, setIsExporting] = useState<boolean>(false);
 
   // Sync initial configuration when opened
@@ -206,22 +208,29 @@ export const ReporteCuotasVencidasModal: React.FC<ReporteCuotasVencidasModalProp
   const filteredRecords = useMemo(() => {
     return enrichedCobranzas
       .filter((c) => {
+        // 0. Excluir clientes desistidos por defecto en los reportes salvo que se marque la opción
+        const isDesistido = c.estado === 'DESISTIDO' || c.estado_cobranza === 'DESISTIDO';
+        if (!incluirDesistidos && isDesistido) {
+          return false;
+        }
+
         const cuotas = c.mora.cuotasVencidas;
 
         // Mode filter: ALL, AL_DIA, MORA_1, MORA_2, MORA_3, MORA_4, CUSTOM
         if (reportMode === 'ALL') {
-          // Keep all
+          // Keep all (subject to incluirDesistidos)
         } else if (reportMode === 'AL_DIA') {
-          if (cuotas !== 0) return false;
+          if (isDesistido || cuotas !== 0) return false;
         } else if (reportMode === 'MORA_1') {
-          if (cuotas < 1) return false;
+          if (isDesistido || cuotas < 1) return false;
         } else if (reportMode === 'MORA_2') {
-          if (cuotas < 2) return false;
+          if (isDesistido || cuotas < 2) return false;
         } else if (reportMode === 'MORA_3') {
-          if (cuotas < 3) return false;
+          if (isDesistido || cuotas < 3) return false;
         } else if (reportMode === 'MORA_4') {
-          if (cuotas < 4) return false;
+          if (isDesistido || cuotas < 4) return false;
         } else if (reportMode === 'CUSTOM') {
+          if (isDesistido) return false;
           if (operator === 'gte') {
             if (cuotas < customMinCuotas) return false;
           } else {
@@ -270,7 +279,7 @@ export const ReporteCuotasVencidasModal: React.FC<ReporteCuotasVencidasModalProp
         }
         return 0;
       });
-  }, [enrichedCobranzas, reportMode, customMinCuotas, operator, selectedManzana, selectedEtapa, searchTerm, sortBy]);
+  }, [enrichedCobranzas, reportMode, customMinCuotas, operator, selectedManzana, selectedEtapa, searchTerm, sortBy, incluirDesistidos]);
 
   // Aggregate stats over filtered records
   const stats = useMemo(() => {
@@ -344,11 +353,13 @@ export const ReporteCuotasVencidasModal: React.FC<ReporteCuotasVencidasModalProp
         'Cuánto le Resta por Pagar (S/)': Number(c.restaPorPagar.toFixed(2)),
         '% Pagado del Terreno': `${c.porcentajePagado.toFixed(1)}%`,
         '% Restante del Terreno': `${c.porcentajeRestante.toFixed(1)}%`,
-        'Estado del Cliente': c.mora.cuotasVencidas === 0 
-          ? 'AL DÍA' 
-          : c.mora.cuotasVencidas === 1 
-            ? '1 CUOTA VENCIDA' 
-            : `${c.mora.cuotasVencidas} CUOTAS VENCIDAS (EN MORA)`,
+        'Estado del Cliente': (c.estado === 'DESISTIDO' || c.estado_cobranza === 'DESISTIDO')
+          ? 'DESISTIDO'
+          : (c.mora.cuotasVencidas === 0 
+            ? 'AL DÍA' 
+            : c.mora.cuotasVencidas === 1 
+              ? '1 CUOTA VENCIDA' 
+              : `${c.mora.cuotasVencidas} CUOTAS VENCIDAS (EN MORA)`),
         'Cuotas Vencidas': c.mora.cuotasVencidas,
         'Detalle Cuotas Vencidas': c.mora.numerosCuotas.length > 0 
           ? `Cuotas: ${c.mora.numerosCuotas.join(', ')}` 
@@ -469,7 +480,7 @@ export const ReporteCuotasVencidasModal: React.FC<ReporteCuotasVencidasModalProp
       c.totalPagado.toFixed(2),
       c.restaPorPagar.toFixed(2),
       `"${c.porcentajePagado.toFixed(1)}%"`,
-      `"${c.mora.cuotasVencidas === 0 ? 'AL DÍA' : `${c.mora.cuotasVencidas} CUOTAS VENCIDAS`}"`,
+      `"${(c.estado === 'DESISTIDO' || c.estado_cobranza === 'DESISTIDO') ? 'DESISTIDO' : (c.mora.cuotasVencidas === 0 ? 'AL DÍA' : `${c.mora.cuotasVencidas} CUOTAS VENCIDAS`)}"`,
       c.mora.cuotasVencidas,
       `"${c.mora.numerosCuotas.join(' - ') || 'Ninguna'}"`,
       c.mora.montoVencido.toFixed(2),
@@ -631,7 +642,7 @@ export const ReporteCuotasVencidasModal: React.FC<ReporteCuotasVencidasModalProp
             )}
 
             {/* Secondary Segment Filters Bar */}
-            <div className="pt-2 border-t border-slate-200/80 grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
+            <div className="pt-2 border-t border-slate-200/80 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 items-end">
               <div>
                 <label className="text-slate-600 font-medium block text-[11px] mb-1">
                   Filtrar por Etapa:
@@ -679,6 +690,30 @@ export const ReporteCuotasVencidasModal: React.FC<ReporteCuotasVencidasModalProp
                   <option value="PAGADAS_DESC">Más Cuotas Pagadas</option>
                   <option value="NOMBRE_ASC">Nombre del Cliente (A - Z)</option>
                 </select>
+              </div>
+
+              {/* Incluir Desistidos Option */}
+              <div>
+                <label className="text-slate-600 font-medium block text-[11px] mb-1">
+                  Clientes Desistidos:
+                </label>
+                <label 
+                  title="Activa esta casilla si deseas incluir a clientes con contratos desistidos en el reporte"
+                  className={`w-full h-8 px-2.5 rounded-lg border text-xs font-semibold flex items-center gap-2 cursor-pointer transition-colors shadow-2xs select-none ${
+                    incluirDesistidos
+                      ? 'bg-slate-100 border-slate-400 text-slate-900 ring-1 ring-slate-400/30'
+                      : 'bg-white border-slate-300 text-slate-600 hover:bg-slate-50'
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={incluirDesistidos}
+                    onChange={(e) => setIncluirDesistidos(e.target.checked)}
+                    className="w-3.5 h-3.5 text-emerald-600 rounded border-slate-300 focus:ring-emerald-500 cursor-pointer"
+                  />
+                  <UserX className={`w-3.5 h-3.5 ${incluirDesistidos ? 'text-rose-600' : 'text-slate-400'}`} />
+                  <span className="truncate">Incluir desistidos</span>
+                </label>
               </div>
             </div>
           </div>
@@ -861,7 +896,12 @@ export const ReporteCuotasVencidasModal: React.FC<ReporteCuotasVencidasModalProp
                           </td>
 
                           <td className="px-3 py-2.5 text-center whitespace-nowrap">
-                            {isAlDia ? (
+                            {(c.estado === 'DESISTIDO' || c.estado_cobranza === 'DESISTIDO') ? (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full font-bold text-[10px] bg-slate-100 text-slate-700 border border-slate-300">
+                                <UserX className="w-3 h-3 text-slate-500" />
+                                Desistido
+                              </span>
+                            ) : isAlDia ? (
                               <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full font-bold text-[10px] bg-emerald-50 text-emerald-700 border border-emerald-200">
                                 <CheckCircle2 className="w-3 h-3 text-emerald-600" />
                                 Al Día (0 vencidas)

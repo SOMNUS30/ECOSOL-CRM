@@ -40,7 +40,7 @@ const addMonthsClamped = (base: Date, months: number, anchorDay: number) => {
  */
 export const calcularMora = (c: ControlCobranza, hoy: Date = new Date()): MoraInfo => {
   const isLiquidado = c.estado_cobranza === 'LIQUIDADO' || Number(c.saldo_restante) <= 0 || Number(c.cuotas_pendientes) <= 0;
-  if (isLiquidado || c.estado === 'DESISTIDO') return EMPTY;
+  if (isLiquidado || c.estado === 'DESISTIDO' || c.estado_cobranza === 'DESISTIDO') return EMPTY;
 
   const primerVenc = parseISO(c.proximo_vencimiento);
   if (!primerVenc) return EMPTY;
@@ -94,14 +94,16 @@ export const calcularEstadoCobranza = (
   mora?: MoraInfo,
   hoy: Date = new Date()
 ): EstadoCobranza => {
+  if (c.estado === 'DESISTIDO' || c.estado_cobranza === 'DESISTIDO') {
+    return 'DESISTIDO';
+  }
+
   const isLiquidado = 
     c.estado_cobranza === 'LIQUIDADO' || 
     c.estado === 'LIQUIDADO' || 
     Number(c.saldo_restante) <= 0 || 
     Number(c.cuotas_pendientes) <= 0;
   if (isLiquidado) return 'LIQUIDADO';
-
-  if (c.estado === 'DESISTIDO') return 'EN MORA';
 
   const m = mora || calcularMora(c, hoy);
   if (m.cuotasVencidas > 0) {

@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
-import { ControlCobranza, Cliente, Lote, Contrato, Pago, Egreso, UsuarioSistema, EstadoCobranza } from '../types/database';
+import { ControlCobranza, Cliente, Lote, Contrato, Pago, Egreso, UsuarioSistema, EstadoCobranza, EstadoLote, EstadoContrato } from '../types/database';
 import { supabaseService, ConnectionStatus, RegistrarVentaParams } from '../services/supabase';
+import { calcularEstadoCobranza } from '../utils/mora';
 
 interface KPIMetrics {
   recaudacionTotal: number;
@@ -39,6 +40,8 @@ interface DataContextType {
   actualizarCliente: (id: number | string, updates: Partial<Cliente>) => Promise<{ success: boolean; error?: string }>;
   actualizarLote: (id: number | string, updates: Partial<Lote>) => Promise<{ success: boolean; lote?: Lote; error?: string }>;
   actualizarLotesMasivo: (updatesList: Array<Partial<Lote> & { id: number | string }>) => Promise<{ success: boolean; count: number; error?: string }>;
+  desistirContrato: (contratoId: number | string, loteId?: number | string, nuevoEstadoLote?: EstadoLote, motivo?: string) => Promise<{ success: boolean; error: string | null }>;
+  reactivarContrato: (contratoId: number | string, loteId?: number | string) => Promise<{ success: boolean; error: string | null }>;
   registrarVenta: (params: RegistrarVentaParams) => Promise<boolean>;
   getNextContractCode: () => string;
   guardarUsuario: (usuario: UsuarioSistema) => Promise<void> | void;
@@ -575,6 +578,77 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setUsuarios(updated);
   };
 
+  const desistirContrato = async (
+    contratoId: number | string, 
+    loteId?: number | string, 
+    nuevoEstadoLote: EstadoLote = 'DISPONIBLE',
+    motivo?: string
+  ): Promise<{ success: boolean; error: string | null }> => {
+    const res = await supabaseService.desistirContrato(contratoId, loteId, nuevoEstadoLote, motivo);
+    if (res.success) {
+      setContratos(prev => prev.map(c => 
+        String(c.id) === String(contratoId) ? { ...c, estado: 'DESISTIDO' as EstadoContrato } : c
+      ));
+      if (loteId) {
+        setLotes(prev => prev.map(l => 
+          String(l.id) === String(loteId) ? { ...l, estado: nuevoEstadoLote } : l
+        ));
+      }
+      setCobranzas(prev => prev.map(c => {
+        if (String(c.contrato_id) === String(contratoId)) {
+          return {
+            ...c,
+            estado: 'DESISTIDO',
+            estado_cobranza: 'DESISTIDO' as EstadoCobranza
+          };
+        }
+        return c;
+      }));
+      // Background sync with database
+      try {
+        fetchContratos();
+        supabaseService.getCobranzas().then(cobList => setCobranzas(cobList));
+      } catch (e) {
+        console.warn('Background sync error after desistir:', e);
+      }
+    }
+    return res;
+  };
+
+  const reactivarContrato = async (
+    contratoId: number | string, 
+    loteId?: number | string
+  ): Promise<{ success: boolean; error: string | null }> => {
+    const res = await supabaseService.reactivarContrato(contratoId, loteId);
+    if (res.success) {
+      setContratos(prev => prev.map(c => 
+        String(c.id) === String(contratoId) ? { ...c, estado: 'ACTIVO' as EstadoContrato } : c
+      ));
+      if (loteId) {
+        setLotes(prev => prev.map(l => 
+          String(l.id) === String(loteId) ? { ...l, estado: 'VENDIDO' as EstadoLote } : l
+        ));
+      }
+      setCobranzas(prev => prev.map(c => {
+        if (String(c.contrato_id) === String(contratoId)) {
+          const row = { ...c, estado: 'ACTIVO' };
+          return {
+            ...row,
+            estado_cobranza: calcularEstadoCobranza(row)
+          };
+        }
+        return c;
+      }));
+      try {
+        fetchContratos();
+        supabaseService.getCobranzas().then(cobList => setCobranzas(cobList));
+      } catch (e) {
+        console.warn('Background sync error after reactivar:', e);
+      }
+    }
+    return res;
+  };
+
   // Memoized KPI metrics
   const metrics: KPIMetrics = useMemo(() => {
     // 1. Recaudación Total Ingresos: Sum of all payments registered
@@ -635,6 +709,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         actualizarCliente,
         actualizarLote,
         actualizarLotesMasivo,
+        desistirContrato,
+        reactivarContrato,
         registrarVenta,
         getNextContractCode,
         guardarUsuario,

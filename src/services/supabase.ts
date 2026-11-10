@@ -97,13 +97,28 @@ class SupabaseService {
     }
   }
 
-  // Fetch live cobranzas from view v_control_cobranzas
+  // Fetch live cobranzas from view v_control_cobranzas reconciled with real contratos.estado
   async getCobranzas(): Promise<ControlCobranza[]> {
     try {
-      const { data, error } = await supabase
-        .from('v_control_cobranzas')
-        .select('*')
-        .order('codigo_contrato', { ascending: true });
+      const [cobResult, ctrResult] = await Promise.all([
+        supabase
+          .from('v_control_cobranzas')
+          .select('*')
+          .order('codigo_contrato', { ascending: true }),
+        supabase
+          .from('contratos')
+          .select('id, codigo_contrato, estado')
+      ]);
+
+      const { data, error } = cobResult;
+      const ctrData = ctrResult.data || [];
+
+      // Build real contract status map (handles both ID and code)
+      const contractStatusMap = new Map<string, EstadoContrato>();
+      ctrData.forEach((ctr: any) => {
+        if (ctr.id && ctr.estado) contractStatusMap.set(String(ctr.id), ctr.estado);
+        if (ctr.codigo_contrato && ctr.estado) contractStatusMap.set(String(ctr.codigo_contrato).trim(), ctr.estado);
+      });
 
       if (error) {
         console.warn('Error querying v_control_cobranzas:', error.message);
@@ -111,9 +126,16 @@ class SupabaseService {
       }
 
       if (data && data.length > 0) {
-        // Normalize rows and merge with local overrides
+        // Normalize rows and merge with local overrides and authoritative contract status
         const normalized: ControlCobranza[] = data.map((d: any, idx: number) => {
           const proxVenc = d.proximo_vencimiento || (d.fecha_primer_pago ? this.calculateDueDateFromBase(d.fecha_primer_pago, Number(d.cuotas_pagadas || 0)) : '');
+          const matchedStatus = 
+            contractStatusMap.get(String(d.contrato_id)) || 
+            contractStatusMap.get(String(d.codigo_contrato || '').trim());
+          const realEstado = (matchedStatus || d.estado || (d.saldo_restante === 0 ? 'LIQUIDADO' : 'ACTIVO')) as EstadoContrato;
+          const isDesistido = realEstado === 'DESISTIDO';
+          const isLiquidado = realEstado === 'LIQUIDADO' || d.saldo_restante === 0;
+
           const row: ControlCobranza = {
             contrato_id: d.contrato_id || (idx + 1),
             codigo_contrato: d.codigo_contrato,
@@ -134,8 +156,8 @@ class SupabaseService {
             saldo_restante: Number(d.saldo_restante || 0),
             proximo_vencimiento: proxVenc,
             proximo_numero_cuota: Number(d.proximo_numero_cuota || (Number(d.cuotas_pagadas || 0) + 1)),
-            estado_cobranza: (d.estado_cobranza || (d.saldo_restante === 0 ? 'LIQUIDADO' : 'AL DIA')) as EstadoCobranza,
-            estado: d.estado || (d.saldo_restante === 0 ? 'LIQUIDADO' : 'ACTIVO')
+            estado_cobranza: isDesistido ? 'DESISTIDO' : (isLiquidado ? 'LIQUIDADO' : ((d.estado_cobranza || 'AL DIA') as EstadoCobranza)),
+            estado: realEstado
           };
           row.estado_cobranza = calcularEstadoCobranza(row);
           return row;
@@ -154,16 +176,46 @@ class SupabaseService {
   }
 
   getCachedCobranzas(): ControlCobranza[] {
+    const cachedContratos = localStorage.getItem(STORAGE_KEYS.CONTRATOS);
+    const ctrMap = new Map<string, EstadoContrato>();
+    if (cachedContratos) {
+      try {
+        const parsedCtr: Contrato[] = JSON.parse(cachedContratos);
+        parsedCtr.forEach(c => {
+          if (c.id && c.estado) ctrMap.set(String(c.id), c.estado);
+          if (c.codigo_contrato && c.estado) ctrMap.set(c.codigo_contrato.trim(), c.estado);
+        });
+      } catch {}
+    }
+
+    const enrichWithStatus = (list: ControlCobranza[]): ControlCobranza[] => {
+      return list.map(c => {
+        const matched = ctrMap.get(String(c.contrato_id)) || ctrMap.get(String(c.codigo_contrato || '').trim());
+        const estadoReal = (matched || c.estado || 'ACTIVO') as EstadoContrato;
+        const isDesistido = estadoReal === 'DESISTIDO';
+        const isLiquidado = estadoReal === 'LIQUIDADO' || c.saldo_restante === 0;
+        const updated: ControlCobranza = {
+          ...c,
+          estado: estadoReal,
+          estado_cobranza: isDesistido ? 'DESISTIDO' : (isLiquidado ? 'LIQUIDADO' : c.estado_cobranza)
+        };
+        return {
+          ...updated,
+          estado_cobranza: calcularEstadoCobranza(updated)
+        };
+      });
+    };
+
     const cached = localStorage.getItem(STORAGE_KEYS.COBRANZAS);
     if (cached) {
       try {
         const parsed = JSON.parse(cached);
-        return this.applyLocalPaymentOverrides(parsed).map(c => ({ ...c, estado_cobranza: calcularEstadoCobranza(c) }));
+        return enrichWithStatus(this.applyLocalPaymentOverrides(parsed));
       } catch {
         // Ignore JSON error
       }
     }
-    return this.applyLocalPaymentOverrides(initialCobranzas).map(c => ({ ...c, estado_cobranza: calcularEstadoCobranza(c) }));
+    return enrichWithStatus(this.applyLocalPaymentOverrides(initialCobranzas));
   }
 
   // Get full relational stores with client-side synchronization

@@ -97,8 +97,6 @@ export const ReporteCuotasVencidasModal: React.FC<ReporteCuotasVencidasModalProp
   // Enrich each contract with full financial calculations and client dossier details
   const enrichedCobranzas = useMemo<CobranzaEnriquecida[]>(() => {
     return cobranzas.map((c) => {
-      const mora = calcularMora(c);
-
       // Find client record by DNI, client_id, or name
       const foundClient = clientes.find((cl) => {
         if (c.dni && cl.dni && cl.dni.trim() === c.dni.trim()) return true;
@@ -112,6 +110,21 @@ export const ReporteCuotasVencidasModal: React.FC<ReporteCuotasVencidasModalProp
         if (String(ct.id) === String(c.contrato_id)) return true;
         return false;
       });
+
+      // Reconcile status with real contract
+      const estadoReal = foundContract?.estado || c.estado || 'ACTIVO';
+      const isDesistido = estadoReal === 'DESISTIDO' || c.estado_cobranza === 'DESISTIDO';
+      const isLiquidado = estadoReal === 'LIQUIDADO' || c.saldo_restante === 0;
+
+      const cWithReal: ControlCobranza = {
+        ...c,
+        estado: estadoReal,
+        estado_cobranza: isDesistido ? 'DESISTIDO' : (isLiquidado ? 'LIQUIDADO' : c.estado_cobranza)
+      };
+
+      const mora = isDesistido 
+        ? { cuotasVencidas: 0, montoVencido: 0, diasAtraso: 0, vencidaDesde: null, numerosCuotas: [] }
+        : calcularMora(cWithReal);
 
       const cl = foundContract?.cliente || (foundContract as any)?.clientes;
 
@@ -209,7 +222,10 @@ export const ReporteCuotasVencidasModal: React.FC<ReporteCuotasVencidasModalProp
     return enrichedCobranzas
       .filter((c) => {
         // 0. Excluir clientes desistidos por defecto en los reportes salvo que se marque la opción
-        const isDesistido = c.estado === 'DESISTIDO' || c.estado_cobranza === 'DESISTIDO';
+        const isDesistido = 
+          c.estado === 'DESISTIDO' || 
+          c.estado_cobranza === 'DESISTIDO' || 
+          c.contratoDetalle?.estado === 'DESISTIDO';
         if (!incluirDesistidos && isDesistido) {
           return false;
         }
@@ -353,7 +369,7 @@ export const ReporteCuotasVencidasModal: React.FC<ReporteCuotasVencidasModalProp
         'Cuánto le Resta por Pagar (S/)': Number(c.restaPorPagar.toFixed(2)),
         '% Pagado del Terreno': `${c.porcentajePagado.toFixed(1)}%`,
         '% Restante del Terreno': `${c.porcentajeRestante.toFixed(1)}%`,
-        'Estado del Cliente': (c.estado === 'DESISTIDO' || c.estado_cobranza === 'DESISTIDO')
+        'Estado del Cliente': (c.estado === 'DESISTIDO' || c.estado_cobranza === 'DESISTIDO' || c.contratoDetalle?.estado === 'DESISTIDO')
           ? 'DESISTIDO'
           : (c.mora.cuotasVencidas === 0 
             ? 'AL DÍA' 
@@ -480,7 +496,7 @@ export const ReporteCuotasVencidasModal: React.FC<ReporteCuotasVencidasModalProp
       c.totalPagado.toFixed(2),
       c.restaPorPagar.toFixed(2),
       `"${c.porcentajePagado.toFixed(1)}%"`,
-      `"${(c.estado === 'DESISTIDO' || c.estado_cobranza === 'DESISTIDO') ? 'DESISTIDO' : (c.mora.cuotasVencidas === 0 ? 'AL DÍA' : `${c.mora.cuotasVencidas} CUOTAS VENCIDAS`)}"`,
+      `"${(c.estado === 'DESISTIDO' || c.estado_cobranza === 'DESISTIDO' || c.contratoDetalle?.estado === 'DESISTIDO') ? 'DESISTIDO' : (c.mora.cuotasVencidas === 0 ? 'AL DÍA' : `${c.mora.cuotasVencidas} CUOTAS VENCIDAS`)}"`,
       c.mora.cuotasVencidas,
       `"${c.mora.numerosCuotas.join(' - ') || 'Ninguna'}"`,
       c.mora.montoVencido.toFixed(2),
@@ -896,7 +912,7 @@ export const ReporteCuotasVencidasModal: React.FC<ReporteCuotasVencidasModalProp
                           </td>
 
                           <td className="px-3 py-2.5 text-center whitespace-nowrap">
-                            {(c.estado === 'DESISTIDO' || c.estado_cobranza === 'DESISTIDO') ? (
+                            {(c.estado === 'DESISTIDO' || c.estado_cobranza === 'DESISTIDO' || c.contratoDetalle?.estado === 'DESISTIDO') ? (
                               <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full font-bold text-[10px] bg-slate-100 text-slate-700 border border-slate-300">
                                 <UserX className="w-3 h-3 text-slate-500" />
                                 Desistido

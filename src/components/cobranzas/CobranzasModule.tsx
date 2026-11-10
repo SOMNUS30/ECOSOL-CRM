@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { useData } from '../../context/DataContext';
 import { useCompany } from '../../context/CompanyContext';
-import { ControlCobranza, Contrato } from '../../types/database';
+import { ControlCobranza, Contrato, EstadoContrato } from '../../types/database';
 import { calcularMora, nivelMora, MoraInfo, calcularEstadoCobranza } from '../../utils/mora';
 import { 
   Search,
@@ -42,19 +42,34 @@ export const CobranzasModule: React.FC = () => {
     lotes = []
   } = useData();
 
-  // Enrich every contract with dynamic real-time overdue info and live status
-  const cobranzas = useMemo(
-    () => rawCobranzas.map(c => {
-      const mora = calcularMora(c);
-      const liveEstado = calcularEstadoCobranza(c, mora);
-      return {
+  // Enrich every contract with dynamic real-time overdue info, authoritative contract status, and live status
+  const cobranzas = useMemo(() => {
+    const ctrMap = new Map<string, EstadoContrato>();
+    (contratos || []).forEach(ct => {
+      if (ct.id && ct.estado) ctrMap.set(String(ct.id), ct.estado);
+      if (ct.codigo_contrato && ct.estado) ctrMap.set(ct.codigo_contrato.trim(), ct.estado);
+    });
+
+    return rawCobranzas.map(c => {
+      const realEstado = (ctrMap.get(String(c.contrato_id)) || ctrMap.get(String(c.codigo_contrato || '').trim()) || c.estado || 'ACTIVO') as EstadoContrato;
+      const isDesistido = realEstado === 'DESISTIDO';
+      const isLiquidado = realEstado === 'LIQUIDADO' || c.saldo_restante === 0;
+
+      const cWithReal: ControlCobranza = {
         ...c,
+        estado: realEstado,
+        estado_cobranza: isDesistido ? 'DESISTIDO' : (isLiquidado ? 'LIQUIDADO' : c.estado_cobranza)
+      };
+
+      const mora = calcularMora(cWithReal);
+      const liveEstado = calcularEstadoCobranza(cWithReal, mora);
+      return {
+        ...cWithReal,
         estado_cobranza: liveEstado,
         mora
       };
-    }),
-    [rawCobranzas]
-  );
+    });
+  }, [rawCobranzas, contratos]);
   type CobranzaConMora = ControlCobranza & { mora: MoraInfo };
   const [sortBy, setSortBy] = useState<string>('CONTRATO');
   const { buildWhatsAppMessage } = useCompany();

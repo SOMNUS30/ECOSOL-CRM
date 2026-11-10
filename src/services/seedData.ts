@@ -25,7 +25,7 @@ export const initialCobranzas: ControlCobranza[] = (rawCobranzas as any[]).map((
   if (saldoRestante === 0 || cuotasPendientes === 0 || c.estado === 'LIQUIDADO') {
     estadoCobranza = 'LIQUIDADO';
   } else if (c.estado === 'DESISTIDO') {
-    estadoCobranza = 'EN MORA';
+    estadoCobranza = 'DESISTIDO';
   } else {
     const todayStr = new Date().toISOString().split('T')[0];
     if (proximoVenc < todayStr) {

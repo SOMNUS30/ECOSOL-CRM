@@ -196,8 +196,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       supabaseService.getEgresos()
     ]);
 
-    setCobranzas(cobranzasList);
-
     const rawContratos = contratosRes.data || [];
     const clientList = clientesRes.data || [];
 
@@ -242,6 +240,30 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setContratos(loadedContratos);
     if (contratosRes.error) setContratosError(contratosRes.error);
 
+    // Reconcile cobranzas with real contract status (especially DESISTIDO / LIQUIDADO)
+    const contractStatusMap = new Map<string, EstadoContrato>();
+    loadedContratos.forEach(c => {
+      if (c.id && c.estado) contractStatusMap.set(String(c.id), c.estado);
+      if (c.codigo_contrato && c.estado) contractStatusMap.set(String(c.codigo_contrato).trim(), c.estado);
+    });
+
+    const reconciledCobranzas = cobranzasList.map(cob => {
+      const realEstado = contractStatusMap.get(String(cob.contrato_id)) || 
+                         contractStatusMap.get(String(cob.codigo_contrato || '').trim()) || 
+                         cob.estado;
+      const isDesistido = realEstado === 'DESISTIDO';
+      const isLiquidado = realEstado === 'LIQUIDADO' || cob.saldo_restante === 0;
+      const item: ControlCobranza = {
+        ...cob,
+        estado: realEstado,
+        estado_cobranza: isDesistido ? 'DESISTIDO' : (isLiquidado ? 'LIQUIDADO' : cob.estado_cobranza)
+      };
+      item.estado_cobranza = calcularEstadoCobranza(item);
+      return item;
+    });
+
+    setCobranzas(reconciledCobranzas);
+
     if (clientList.length > 0) {
       setClientes(clientList);
     }
@@ -254,7 +276,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (egresosRes.error) setEgresosError(egresosRes.error);
 
     // 3. Fetch real payments from Supabase table 'pagos' (710 records) enriched with real contracts & collections
-    const pagosRes = await supabaseService.getPagos(loadedContratos, cobranzasList);
+    const pagosRes = await supabaseService.getPagos(loadedContratos, reconciledCobranzas);
     if (pagosRes.data) {
       setPagos(pagosRes.data);
     }
